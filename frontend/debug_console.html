@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>GreenGuardian - API Debug Console</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+        }
+
+        h1 {
+            margin-bottom: 10px;
+        }
+
+        .content {
+            padding: 20px;
+        }
+
+        .section {
+            margin-bottom: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 15px;
+            background: #f9f9f9;
+        }
+
+        .section h2 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        input[type="file"],
+        button {
+            padding: 10px 15px;
+            margin: 5px 5px 5px 0;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        button {
+            background: #667eea;
+            color: white;
+            font-weight: bold;
+            transition: background 0.3s;
+        }
+
+        button:hover {
+            background: #764ba2;
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .output {
+            background: #1e1e1e;
+            color: #00ff00;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            max-height: 400px;
+            overflow-y: auto;
+            margin-top: 10px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .log-entry {
+            padding: 3px 0;
+            border-bottom: 1px solid #333;
+        }
+
+        .log-success {
+            color: #00ff00;
+        }
+
+        .log-error {
+            color: #ff4444;
+        }
+
+        .log-info {
+            color: #00ccff;
+        }
+
+        .log-warning {
+            color: #ffaa00;
+        }
+
+        .status {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-weight: bold;
+            font-size: 12px;
+            margin-top: 10px;
+        }
+
+        .status.ok {
+            background: #00ff00;
+            color: #000;
+        }
+
+        .status.error {
+            background: #ff4444;
+            color: white;
+        }
+
+        .status.pending {
+            background: #ffaa00;
+            color: #000;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🌱 GreenGuardian - API Debug Console</h1>
+            <p>Test the backend API connection and diagnose issues</p>
+        </div>
+
+        <div class="content">
+            <div class="section">
+                <h2>1️⃣ Backend Status</h2>
+                <button onclick="testBackend()">Test Backend Connection</button>
+                <div id="backendStatus" class="status">Not tested yet</div>
+                <div class="output" id="backendOutput"></div>
+            </div>
+
+            <div class="section">
+                <h2>2️⃣ Upload Image & Test API</h2>
+                <input type="file" id="imageInput" accept="image/*">
+                <button onclick="testAPI()">Test Diagnose API</button>
+                <div id="apiStatus" class="status">Not tested yet</div>
+                <div class="output" id="apiOutput"></div>
+            </div>
+
+            <div class="section">
+                <h2>3️⃣ Detailed Request Log</h2>
+                <button onclick="clearLogs()">Clear Logs</button>
+                <div class="output" id="fullLog"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function log(message, type = 'info') {
+            const logs = document.getElementById('fullLog');
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logs.appendChild(entry);
+            logs.scrollTop = logs.scrollHeight;
+        }
+
+        function setOutput(elementId, content) {
+            const el = document.getElementById(elementId);
+            if (typeof content === 'object') {
+                el.textContent = JSON.stringify(content, null, 2);
+            } else {
+                el.textContent = content;
+            }
+        }
+
+        function setStatus(elementId, status, message) {
+            const el = document.getElementById(elementId);
+            el.textContent = message;
+            el.className = `status ${status}`;
+        }
+
+        async function testBackend() {
+            log('Testing backend connection...', 'info');
+            setStatus('backendStatus', 'pending', 'Testing...');
+            setOutput('backendOutput', 'Connecting to http://localhost:8000...');
+
+            try {
+                const response = await fetch('http://localhost:8000', {
+                    method: 'GET'
+                });
+
+                const content = await response.text();
+                log(`Backend responded with status ${response.status}`, 'success');
+                log(`Response: ${content}`, 'success');
+
+                setOutput('backendOutput', `Status: ${response.status}\nContent: ${content}`);
+                setStatus('backendStatus', 'ok', '✅ Backend is running!');
+            } catch (error) {
+                log(`Backend error: ${error.message}`, 'error');
+                setOutput('backendOutput', `Error: ${error.message}\n\nMake sure to run:\ncd D:\\GreenGiardian\\Backend && ..\\venv\\Scripts\\activate && python main.py`);
+                setStatus('backendStatus', 'error', '❌ Backend not responding!');
+            }
+        }
+
+        async function testAPI() {
+            log('Testing API...', 'info');
+            const fileInput = document.getElementById('imageInput');
+
+            if (!fileInput.files[0]) {
+                log('No file selected', 'error');
+                setStatus('apiStatus', 'error', '❌ Please select an image first');
+                return;
+            }
+
+            const file = fileInput.files[0];
+            log(`Selected file: ${file.name} (${file.size} bytes, ${file.type})`, 'info');
+            setStatus('apiStatus', 'pending', 'Testing...');
+
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+
+                log('Sending request to http://localhost:8000/diagnose', 'info');
+                log(`Method: POST`, 'info');
+                log(`Content-Type: multipart/form-data`, 'info');
+                log(`File: ${file.name} (${file.size} bytes)`, 'info');
+
+                const response = await fetch('http://localhost:8000/diagnose', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                log(`Response status: ${response.status}`, response.status === 200 ? 'success' : 'warning');
+
+                const contentType = response.headers.get('content-type');
+                log(`Content-Type: ${contentType}`, 'info');
+
+                let data;
+                if (contentType && contentType.includes('application/json')) {
+                    data = await response.json();
+                } else {
+                    data = { text: await response.text() };
+                }
+
+                log(`Response received:`, 'success');
+                log(JSON.stringify(data, null, 2), 'success');
+
+                if (response.status === 200) {
+                    if (data.disease && typeof data.confidence === 'number') {
+                        setOutput('apiOutput', `✅ SUCCESS!\n\nDisease: ${data.disease}\nConfidence: ${data.confidence}%`);
+                        setStatus('apiStatus', 'ok', '✅ API working perfectly!');
+                        log('API test passed!', 'success');
+                    } else {
+                        setOutput('apiOutput', `Invalid response format:\n${JSON.stringify(data, null, 2)}`);
+                        setStatus('apiStatus', 'error', '❌ Invalid response format');
+                        log('Invalid response format', 'error');
+                    }
+                } else {
+                    const errMsg = data.error || data.text || response.statusText;
+                    setOutput('apiOutput', `HTTP ${response.status} Error:\n${errMsg}`);
+                    setStatus('apiStatus', 'error', `❌ HTTP ${response.status} Error`);
+                    log(`HTTP error: ${errMsg}`, 'error');
+                }
+            } catch (error) {
+                log(`API test failed: ${error.message}`, 'error');
+                log(`Stack: ${error.stack}`, 'error');
+                setOutput('apiOutput', `Error: ${error.message}\n\nMake sure both servers are running:\n1. Backend: http://localhost:8000\n2. Frontend: http://localhost:3000`);
+                setStatus('apiStatus', 'error', `❌ ${error.message}`);
+            }
+        }
+
+        function clearLogs() {
+            document.getElementById('fullLog').innerHTML = '';
+            log('Logs cleared', 'info');
+        }
+
+        // Auto-test on page load
+        window.addEventListener('load', () => {
+            log('GreenGuardian Debug Console loaded', 'success');
+            log('Step 1: Click "Test Backend Connection"', 'info');
+            log('Step 2: Select an image and click "Test Diagnose API"', 'info');
+        });
+    </script>
+</body>
+
+</html>

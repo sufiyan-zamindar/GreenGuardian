@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GreenGuardian - Control Panel</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+            max-width: 500px;
+            width: 100%;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 32px;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .status-bar {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 0;
+            font-size: 13px;
+        }
+
+        .status-item span:first-child {
+            font-weight: 500;
+        }
+
+        .status-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .status-indicator.ok {
+            background: #00ff00;
+            box-shadow: 0 0 10px #00ff00;
+        }
+
+        .status-indicator.error {
+            background: #ff4444;
+            box-shadow: 0 0 10px #ff4444;
+        }
+
+        .status-indicator.pending {
+            background: #ffaa00;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        .button-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .button {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+            text-align: center;
+            display: block;
+        }
+
+        .button-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .button-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+        }
+
+        .button-secondary {
+            background: #f0f0f0;
+            color: #333;
+            border: 1px solid #ddd;
+        }
+
+        .button-secondary:hover {
+            background: #e8e8e8;
+        }
+
+        .button-warning {
+            background: #ffaa00;
+            color: white;
+        }
+
+        .button-warning:hover {
+            background: #ff9500;
+        }
+
+        .button-success {
+            background: #00cc00;
+            color: white;
+        }
+
+        .button-success:hover {
+            background: #00bb00;
+        }
+
+        .divider {
+            border-top: 1px solid #ddd;
+            margin: 20px 0;
+        }
+
+        .info-box {
+            background: #f0f8ff;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            border-radius: 5px;
+            font-size: 13px;
+            color: #333;
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+
+        .info-box strong {
+            display: block;
+            margin-bottom: 5px;
+            color: #667eea;
+        }
+
+        .footer {
+            text-align: center;
+            padding: 20px;
+            background: #f9f9f9;
+            font-size: 12px;
+            color: #999;
+        }
+
+        .status-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .status-card {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .status-card h3 {
+            font-size: 12px;
+            color: #999;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+        }
+
+        .status-card .value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🌱 GreenGuardian</h1>
+            <p>Control Panel</p>
+        </div>
+
+        <div class="content">
+            <div class="info-box" id="infoBox">
+                <strong>⚠️ Checking servers...</strong>
+                <p>Please wait while we check the system status...</p>
+            </div>
+
+            <div class="status-grid">
+                <div class="status-card">
+                    <h3>Backend</h3>
+                    <div class="status-indicator pending" id="backendIndicator"></div>
+                    <div class="value" id="backendStatus">?</div>
+                </div>
+                <div class="status-card">
+                    <h3>Frontend</h3>
+                    <div class="status-indicator pending" id="frontendIndicator"></div>
+                    <div class="value" id="frontendStatus">?</div>
+                </div>
+            </div>
+
+            <div class="button-group">
+                <button class="button button-primary" onclick="openDebugConsole()">
+                    🔧 Debug Console
+                </button>
+                <button class="button button-primary" onclick="openDiagnosis()">
+                    📊 Run Diagnostics
+                </button>
+                <button class="button button-secondary" onclick="openApp()">
+                    📱 Go to App
+                </button>
+            </div>
+
+            <div class="divider"></div>
+
+            <div class="button-group">
+                <a href="https://github.com" target="_blank" class="button button-secondary">
+                    📖 Documentation
+                </a>
+                <a href="QUICK_START.md" class="button button-secondary">
+                    ⚡ Quick Start Guide
+                </a>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>GreenGuardian v2.0 - Plant Disease Detection</p>
+            <p id="version">Status: Checking...</p>
+        </div>
+    </div>
+
+    <script>
+        async function checkStatus() {
+            const backendCard = document.getElementById('backendStatus');
+            const backendIndicator = document.getElementById('backendIndicator');
+            const frontendCard = document.getElementById('frontendStatus');
+            const frontendIndicator = document.getElementById('frontendIndicator');
+            const infoBox = document.getElementById('infoBox');
+
+            let backendRunning = false;
+            let frontendRunning = false;
+
+            // Check Backend
+            try {
+                const res = await fetch('http://localhost:8000/', {
+                    method: 'GET',
+                    timeout: 3000
+                });
+                if (res.ok) {
+                    backendRunning = true;
+                    backendCard.textContent = '✅';
+                    backendIndicator.className = 'status-indicator ok';
+                }
+            } catch (e) {
+                backendCard.textContent = '❌';
+                backendIndicator.className = 'status-indicator error';
+            }
+
+            // Check Frontend (current page)
+            frontendRunning = true;
+            frontendCard.textContent = '✅';
+            frontendIndicator.className = 'status-indicator ok';
+
+            // Update info box
+            if (backendRunning && frontendRunning) {
+                infoBox.innerHTML = '<strong>✅ All systems operational!</strong><p>You can now test the application or run diagnostics.</p>';
+            } else if (!backendRunning) {
+                infoBox.innerHTML = `
+                    <strong>⚠️  Backend not running</strong>
+                    <p>Open PowerShell and run:</p>
+                    <code style="background: #fff; padding: 8px; display: block; margin-top: 5px; border-radius: 3px;">
+                    cd Backend && ..\venv\Scripts\activate && python main.py
+                    </code>
+                `;
+            }
+        }
+
+        function openDebugConsole() {
+            const url = 'http://localhost:3000/debug_console.html';
+            if (typeof window !== 'undefined' && window.open) {
+                window.open(url, '_blank');
+            } else {
+                alert('Open this URL in your browser:\n' + url);
+            }
+        }
+
+        function openDiagnosis() {
+            const url = 'http://localhost:3000/diagnosis.html';
+            if (typeof window !== 'undefined' && window.open) {
+                window.open(url, '_blank');
+            } else {
+                alert('Open this URL in your browser:\n' + url);
+            }
+        }
+
+        function openApp() {
+            const url = 'http://localhost:3000';
+            if (typeof window !== 'undefined' && window.open) {
+                window.open(url, '_blank');
+            } else {
+                alert('Open this URL in your browser:\n' + url);
+            }
+        }
+
+        // Check status on load
+        window.addEventListener('load', checkStatus);
+
+        // Recheck every 5 seconds
+        setInterval(checkStatus, 5000);
+    </script>
+</body>
+
+</html>

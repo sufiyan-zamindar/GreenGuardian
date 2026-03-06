@@ -1,0 +1,35 @@
+{
+  "name": "GreenGuardian - Plant Disease Diagnosis",
+  "short_name": "GreenGuardian",
+  "description": "AI-powered plant disease diagnosis app. Upload photos to identify diseases and get treatment recommendations.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#10b981",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "lang": "en",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect fill='%2310b981' width='192' height='192' rx='40'/%3E%3Cpath fill='white' d='M96 32c-35.3 0-64 28.7-64 64 0 35.3 28.7 64 64 64s64-28.7 64-64c0-35.3-28.7-64-64-64zm0 116c-28.7 0-52-23.3-52-52 0-28.7 23.3-52 52-52s52 23.3 52 52c0 28.7-23.3 52-52 52z'/%3E%3Cpath fill='white' d='M96 56c-22.1 0-40 17.9-40 40 0 22.1 17.9 40 40 40s40-17.9 40-40c0-22.1-17.9-40-40-40zm20 56c-5.5 0-10-4.5-10-10s4.5-10 10-10 10 4.5 10 10-4.5 10-10 10z'/%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    }
+  ],
+  "categories": ["health", "utilities", "education"],
+  "shortcuts": [
+    {
+      "name": "New Diagnosis",
+      "short_name": "Diagnose",
+      "description": "Start a new plant diagnosis",
+      "url": "/?action=diagnose"
+    },
+    {
+      "name": "History",
+      "short_name": "History",
+      "description": "View past diagnoses",
+      "url": "/?action=history"
+    }
+  ]
+}

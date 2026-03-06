@@ -1,0 +1,277 @@
+<!-- <!DOCTYPE html>
+<html>
+<head>
+    <title>GreenGuardian - Quick Diagnosis</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 {
+            color: #667eea;
+            text-align: center;
+        }
+        .card {
+            background: white;
+            margin: 20px 0;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .test-item {
+            margin: 10px 0;
+            padding: 10px;
+            border-left: 4px solid #ddd;
+        }
+        .test-item.pass {
+            border-left-color: #00ff00;
+            background: #f0fff0;
+        }
+        .test-item.fail {
+            border-left-color: #ff4444;
+            background: #fff0f0;
+        }
+        .test-item.pending {
+            border-left-color: #ffaa00;
+            background: #fffaf0;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 10px 5px 10px 0;
+        }
+        button:hover {
+            background: #764ba2;
+        }
+        button:disabled {
+            background: #ccc;
+        }
+        .error {
+            color: #ff4444;
+            font-weight: bold;
+        }
+        .success {
+            color: #00aa00;
+            font-weight: bold;
+        }
+        code {
+            background: #f0f0f0;
+            padding: 2px 5px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        .instruction {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 4px solid #667eea;
+            margin: 15px 0;
+        }
+        textarea {
+            width: 100%;
+            height: 200px;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 12px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔧 GreenGuardian Quick Diagnosis</h1>
+    
+    <div class="card">
+        <h2>System Status Checker</h2>
+        <p>Click the button below to run all diagnostic tests:</p>
+        
+        <button onclick="runAllTests()">Run All Tests Now</button>
+        <button onclick="clearResults()">Clear Results</button>
+        
+        <div id="results"></div>
+    </div>
+
+    <div class="card">
+        <h2>Server Setup Instructions</h2>
+        
+        <div class="instruction">
+            <strong>⚠️ Both servers must be running!</strong>
+            <p>Open TWO separate PowerShell/Command windows and run:</p>
+            <p><strong>Window 1 - Backend:</strong></p>
+            <code>cd D:\GreenGiardian\Backend && ..\venv\Scripts\activate && python main.py</code>
+            <p><strong>Window 2 - Frontend:</strong></p>
+            <code>cd D:\GreenGiardian\sufiyan && python -m http.server 3000</code>
+        </div>
+
+        <p>Then refresh this page.</p>
+    </div>
+
+    <div class="card">
+        <h2>Manual Test: Upload Image</h2>
+        <p>Select an image and click "Test Upload" to see detailed error information:</p>
+        
+        <input type="file" id="testFile" accept="image/*">
+        <button onclick="manualTest()">Test Upload</button>
+        
+        <textarea id="testOutput" placeholder="Test output will appear here..."></textarea>
+    </div>
+
+    <script>
+        function log(msg, type = 'info') {
+            const results = document.getElementById('results');
+            const div = document.createElement('div');
+            div.className = `test-item ${type}`;
+            div.innerHTML = msg;
+            results.appendChild(div);
+        }
+
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+            document.getElementById('testOutput').value = '';
+        }
+
+        async function runAllTests() {
+            clearResults();
+            log('⏳ Running diagnostics...', 'pending');
+            
+            // Test 1: Backend connection
+            log('Testing backend connection...', 'pending');
+            try {
+                const res = await fetch('http://localhost:8000/', { method: 'GET' });
+                if (res.ok) {
+                    const text = await res.text();
+                    log(`✅ Backend is running: <code>${text}</code>`, 'pass');
+                } else {
+                    log(`❌ Backend returned error: HTTP ${res.status}`, 'fail');
+                }
+            } catch (e) {
+                log(`❌ Cannot connect to backend: ${e.message}<br/><small>Make sure to run: <code>python main.py</code> in Backend folder</small>`, 'fail');
+            }
+
+            // Test 2: Frontend is working (this page loads, so it's working)
+            log(`✅ Frontend is working (you're viewing this page)`, 'pass');
+
+            // Test 3: CORS config
+            log('Checking CORS configuration...', 'pending');
+            try {
+                const res = await fetch('http://localhost:8000/', {
+                    method: 'OPTIONS',
+                    headers: {
+                        'Origin': 'http://localhost:3000'
+                    }
+                });
+                const cors = res.headers.get('access-control-allow-origin');
+                if (cors) {
+                    log(`✅ CORS is enabled: <code>${cors}</code>`, 'pass');
+                } else {
+                    log(`⚠️ CORS header not found (may still work)`, 'pending');
+                }
+            } catch (e) {
+                log(`❌ CORS check failed: ${e.message}`, 'fail');
+            }
+
+            log('✨ Diagnostics complete!', 'pass');
+        }
+
+        async function manualTest() {
+            const fileInput = document.getElementById('testFile');
+            const output = document.getElementById('testOutput');
+            
+            if (!fileInput.files[0]) {
+                output.value = '❌ Please select an image first';
+                return;
+            }
+
+            output.value = '⏳ Testing upload...\n\n';
+
+            const file = fileInput.files[0];
+            const logMsg = (msg, type = 'info') => {
+                const prefix = type === 'error' ? '❌' : type === 'success' ? '✅' : 'ℹ️';
+                output.value += `${prefix} ${msg}\n`;
+                output.scrollTop = output.scrollHeight;
+            };
+
+            logMsg(`File selected: ${file.name}`, 'info');
+            logMsg(`File size: ${file.size} bytes`, 'info');
+            logMsg(`File type: ${file.type}`, 'info');
+            logMsg('', 'info');
+            logMsg('Connecting to http://localhost:8000/diagnose...', 'info');
+
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+
+                const res = await fetch('http://localhost:8000/diagnose', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                logMsg(`Response status: ${res.status}`, 'info');
+
+                const contentType = res.headers.get('content-type');
+                logMsg(`Content-Type: ${contentType}`, 'info');
+                logMsg('', 'info');
+
+                try {
+                    const data = await res.json();
+                    logMsg('Response received:', 'info');
+                    logMsg(JSON.stringify(data, null, 2), 'info');
+
+                    if (res.status === 200 && data.disease && typeof data.confidence === 'number') {
+                        logMsg('', 'info');
+                        logMsg('✅ SUCCESS! API is working correctly!', 'success');
+                        logMsg(`Disease: ${data.disease}`, 'success');
+                        logMsg(`Confidence: ${data.confidence}%`, 'success');
+                    } else if (data.error) {
+                        logMsg('', 'info');
+                        logMsg(`❌ Server error: ${data.error}`, 'error');
+                        if (data.details) {
+                            logMsg(`Details: ${data.details}`, 'error');
+                        }
+                    } else {
+                        logMsg('', 'info');
+                        logMsg('⚠️ Response format might be invalid', 'error');
+                    }
+                } catch (e) {
+                    logMsg('', 'info');
+                    logMsg(`❌ Failed to parse response: ${e.message}`, 'error');
+                    logMsg('Expected JSON but got:', 'error');
+                    const text = await res.text();
+                    logMsg(text.substring(0, 200), 'error');
+                }
+            } catch (e) {
+                logMsg('', 'info');
+                logMsg(`❌ Network error: ${e.message}`, 'error');
+                logMsg('', 'info');
+                logMsg('Possible causes:', 'error');
+                logMsg('1. Backend is not running', 'error');
+                logMsg('2. CORS is not enabled', 'error');
+                logMsg('3. Network connection issue', 'error');
+            }
+        }
+
+        // Auto-run tests on load
+        window.addEventListener('load', () => {
+            log('✅ Diagnosis page loaded', 'pass');
+            log('Click "Run All Tests Now" to check your servers', 'pending');
+        });
+    </script>
+</body>
+</html> -->
+<input type="file" id="imageInput">
+
+<button onclick="uploadImage()">
+    Diagnose Plant
+</button>
+
+<div id="result"></div>
+
+<script src="app.js"></script>

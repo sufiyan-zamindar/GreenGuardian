@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>GreenGuardian - Final Test</title>
+    <style>
+        body {
+            font-family: Arial;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+
+        h1 {
+            color: #667eea;
+        }
+
+        .test-card {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .success {
+            color: #00cc00;
+            font-weight: bold;
+        }
+
+        .error {
+            color: #ff4444;
+            font-weight: bold;
+        }
+
+        .warning {
+            color: #ffaa00;
+        }
+
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #764ba2;
+        }
+
+        textarea {
+            width: 100%;
+            height: 150px;
+            font-family: monospace;
+            border: 1px solid #ddd;
+            padding: 10px;
+            border-radius: 5px;
+        }
+
+        .status-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin: 20px 0;
+        }
+
+        .status-card {
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 5px;
+            text-align: center;
+        }
+
+        .status-card h3 {
+            margin: 0;
+            font-size: 12px;
+            color: #999;
+        }
+
+        .status-card .value {
+            font-size: 28px;
+            font-weight: bold;
+            margin-top: 5px;
+        }
+
+        code {
+            background: #f0f0f0;
+            padding: 2px 5px;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>🌱 GreenGuardian - Final Verification Test</h1>
+
+    <div class="test-card">
+        <h2>✅ Step-by-Step Fix Verification</h2>
+
+        <div class="status-grid">
+            <div class="status-card">
+                <h3>Backend Status</h3>
+                <div class="value" id="backendStatus">?</div>
+            </div>
+            <div class="status-card">
+                <h3>Response Format</h3>
+                <div class="value" id="formatStatus">?</div>
+            </div>
+        </div>
+
+        <button onclick="runTest()">Run Verification Test</button>
+        <button onclick="testWithYourImage()">Upload Your Own Image</button>
+
+        <h3>Test Results:</h3>
+        <textarea id="results" placeholder="Test results will appear here..."></textarea>
+    </div>
+
+    <div class="test-card">
+        <h2>📋 What Was Fixed</h2>
+        <p><code>disease</code> was being returned as a number (35) ❌</p>
+        <p>Now returns as a string ("Tomato___Tomato_Yellow_Leaf_Curl_Virus") ✅</p>
+        <p><code>confidence</code> was decimal (94.69) - now integer (95) ✅</p>
+    </div>
+
+    <div class="test-card">
+        <h2>🚀 Next Steps</h2>
+        <ol>
+            <li>Run the test below</li>
+            <li>If all tests pass ✅, restart your backend:
+                <p style="background: #fff; padding: 10px; border-radius: 3px;">
+                    <code>cd D:\GreenGiardian\Backend && ..\venv\Scripts\activate && python main.py</code>
+                </p>
+            </li>
+            <li>Go to http://localhost:3000 and upload an image</li>
+            <li>It should now work! 🎉</li>
+        </ol>
+    </div>
+
+    <script>
+        function log(msg) {
+            const results = document.getElementById('results');
+            results.value += msg + '\n';
+            results.scrollTop = results.scrollHeight;
+        }
+
+        async function runTest() {
+            document.getElementById('results').value = '';
+
+            log('🔍 Running verification test...\n');
+
+            // Test 1: Backend connection
+            log('[1/3] Testing backend connection...');
+            try {
+                const res = await fetch('http://localhost:8000/', { method: 'GET' });
+                if (res.ok) {
+                    log('✅ Backend is running\n');
+                    document.getElementById('backendStatus').textContent = '✅';
+                } else {
+                    log('❌ Backend not responding\n');
+                    document.getElementById('backendStatus').textContent = '❌';
+                    return;
+                }
+            } catch (e) {
+                log('❌ Cannot connect to backend: ' + e.message);
+                log('   Make sure to restart the backend!\n');
+                document.getElementById('backendStatus').textContent = '❌';
+                return;
+            }
+
+            // Test 2: Create a test image
+            log('[2/3] Creating test image...');
+            try {
+                const canvas = document.createElement('canvas');
+                canvas.width = 224;
+                canvas.height = 224;
+                canvas.toBlob(async (blob) => {
+                    log('✅ Test image created\n');
+
+                    // Test 3: Upload and check response format
+                    log('[3/3] Testing API response format...');
+                    const formData = new FormData();
+                    formData.append('file', blob, 'test.jpg');
+
+                    try {
+                        const res = await fetch('http://localhost:8000/diagnose', {
+                            method: 'POST',
+                            body: formData
+                        });
+
+                        const data = await res.json();
+                        log('Response received: ' + JSON.stringify(data, null, 2) + '\n');
+
+                        // Validate format
+                        let issues = [];
+
+                        if (typeof data.disease !== 'string') {
+                            issues.push('❌ disease is ' + typeof data.disease + ', should be string');
+                        } else {
+                            log('✅ disease is a string: "' + data.disease + '"');
+                        }
+
+                        if (typeof data.confidence !== 'number') {
+                            issues.push('❌ confidence is ' + typeof data.confidence + ', should be number');
+                        } else {
+                            log('✅ confidence is a number: ' + data.confidence);
+                        }
+
+                        if (!data.success) {
+                            issues.push('❌ success is ' + data.success + ', should be true');
+                        } else {
+                            log('✅ success is true');
+                        }
+
+                        document.getElementById('formatStatus').textContent = issues.length === 0 ? '✅' : '❌';
+
+                        if (issues.length === 0) {
+                            log('\n🎉 ALL CHECKS PASSED!');
+                            log('\nNow restart the backend:');
+                            log('  cd D:\\GreenGiardian\\Backend');
+                            log('  ..\venv\Scripts\activate');
+                            log('  python main.py');
+                        } else {
+                            log('\n⚠️ Issues found:');
+                            issues.forEach(issue => log('  ' + issue));
+                        }
+                    } catch (e) {
+                        log('❌ API test failed: ' + e.message);
+                        document.getElementById('formatStatus').textContent = '❌';
+                    }
+                });
+            } catch (e) {
+                log('❌ Error: ' + e.message);
+            }
+        }
+
+        async function testWithYourImage() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'image/*';
+            input.onchange = async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                document.getElementById('results').value = '';
+                log('📁 Testing with: ' + file.name + '\n');
+
+                try {
+                    const formData = new FormData();
+                    formData.append('file', file);
+
+                    log('Sending to backend...');
+                    const res = await fetch('http://localhost:8000/diagnose', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    const data = await res.json();
+                    log('Response: ' + JSON.stringify(data, null, 2) + '\n');
+
+                    if (typeof data.disease === 'string') {
+                        log('✅ SUCCESS! Response is valid!');
+                        log('Disease: ' + data.disease);
+                        log('Confidence: ' + data.confidence + '%');
+                    } else {
+                        log('❌ Invalid response format');
+                    }
+                } catch (e) {
+                    log('❌ Error: ' + e.message);
+                }
+            };
+            input.click();
+        }
+    </script>
+</body>
+
+</html>
