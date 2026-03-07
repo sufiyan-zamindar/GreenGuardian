@@ -1,1589 +1,447 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="GreenGuardian - AI-powered plant disease diagnosis">
     <meta name="theme-color" content="#10b981">
     <title>GreenGuardian - Plant Disease Diagnosis</title>
-    
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌱</text></svg>">
-    
-    <script>
-        // Suppress Tailwind CDN warnings
-        const originalWarn = console.warn;
-        console.warn = function(...args) {
-            if (args[0]?.includes('cdn.tailwindcss.com')) return;
-            return originalWarn.apply(console, args);
-        };
-    </script>
-    
-    <script src="https://cdn.tailwindcss.com"></script>
-    
-    <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
-    
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-    
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    
-    <script src="https://unpkg.com/lucide@latest"></script>
-    
+
+    <link rel="icon" type="image/svg+xml"
+        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌱</text></svg>">
     <link rel="manifest" href="manifest.json">
-    
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['Inter', 'system-ui', 'sans-serif'],
-                    },
-                    colors: {
-                        primary: {
-                            50: '#ecfdf5', 100: '#d1fae5', 200: '#a7f3d0', 300: '#6ee7b7',
-                            400: '#34d399', 500: '#10b981', 600: '#059669', 700: '#047857',
-                            800: '#065f46', 900: '#064e3b',
-                        },
-                        dark: {
-                            bg: '#0f172a', surface: '#1e293b', border: '#334155',
-                            text: '#f8fafc', muted: '#94a3b8'
-                        }
-                    },
-                    animation: {
-                        'fade-in': 'fadeIn 0.3s ease-out',
-                        'slide-up': 'slideUp 0.4s ease-out',
-                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-                    },
-                    keyframes: {
-                        fadeIn: {
-                            '0%': { opacity: '0' },
-                            '100%': { opacity: '1' },
-                        },
-                        slideUp: {
-                            '0%': { transform: 'translateY(20px)', opacity: '0' },
-                            '100%': { transform: 'translateY(0)', opacity: '1' },
-                        }
-                    }
-                }
-            }
-        }
-    </script>
-    
+
     <style>
-        /* CSS Variables for theming */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
         :root {
-            --bg-primary: #ffffff;
-            --bg-secondary: #f9fafb;
-            --bg-tertiary: #f3f4f6;
-            --text-primary: #111827;
-            --text-secondary: #6b7280;
-            --text-muted: #9ca3af;
-            --border-color: #e5e7eb;
-            --card-bg: #ffffff;
-            --shadow-color: rgba(0, 0, 0, 0.1);
-        }
-        
-        .dark {
-            --bg-primary: #0f172a;
-            --bg-secondary: #1e293b;
-            --bg-tertiary: #334155;
-            --text-primary: #f8fafc;
-            --text-secondary: #cbd5e1;
-            --text-muted: #94a3b8;
-            --border-color: #334155;
-            --card-bg: #1e293b;
-            --shadow-color: rgba(0, 0, 0, 0.3);
-        }
-        
-        * { box-sizing: border-box; }
-        html { scroll-behavior: smooth; }
-        body { 
-            font-family: 'Inter', system-ui, sans-serif; 
-            -webkit-font-smoothing: antialiased;
-            background-color: var(--bg-secondary);
-            color: var(--text-primary);
-            transition: background-color 0.3s ease, color 0.3s ease;
-        }
-        
-        /* Screen transitions */
-        .screen { display: none; opacity: 0; transition: opacity 0.3s ease-in-out; }
-        .screen.active { display: flex; opacity: 1; }
-        
-        /* Custom scrollbar */
-        ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-track { background: var(--bg-secondary); }
-        ::-webkit-scrollbar-thumb { background: #10b981; border-radius: 4px; }
-        
-        /* Theme-aware components */
-        .theme-card {
-            background-color: var(--card-bg);
-            border: 1px solid var(--border-color);
-            transition: all 0.3s ease;
-        }
-        
-        .theme-input {
-            background-color: var(--bg-primary);
-            border: 1px solid var(--border-color);
-            color: var(--text-primary);
-            transition: all 0.2s ease;
-        }
-        
-        .theme-input:focus {
-            border-color: #10b981;
-            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
-        }
-        
-        /* Drag and drop */
-        .drop-zone { 
-            transition: all 0.3s ease; 
-            border: 2px dashed var(--border-color); 
-        }
-        .drop-zone.drag-over { 
-            border-color: #10b981; 
-            background-color: rgba(16, 185, 129, 0.1); 
-            transform: scale(1.02); 
-        }
-        .drop-zone.has-file { 
-            border-color: #10b981; 
-            border-style: solid; 
-            background-color: rgba(16, 185, 129, 0.05); 
-        }
-        
-        /* Skeleton loading */
-        @keyframes shimmer { 
-            0% { background-position: -200% 0; } 
-            100% { background-position: 200% 0; } 
-        }
-        .skeleton { 
-            background: linear-gradient(90deg, var(--bg-tertiary) 25%, var(--bg-secondary) 50%, var(--bg-tertiary) 75%); 
-            background-size: 200% 100%; 
-            animation: shimmer 1.5s infinite; 
-        }
-        
-        /* Progress bar */
-        .progress-bar { transition: width 0.5s ease-out; }
-        
-        /* Button effects */
-        .btn-primary { transition: all 0.2s ease; }
-        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); }
-        .btn-primary:active { transform: translateY(0); }
-        
-        /* Card hover */
-        .card-hover { transition: all 0.3s ease; }
-        .card-hover:hover { 
-            transform: translateY(-2px); 
-            box-shadow: 0 8px 25px var(--shadow-color); 
-        }
-        
-        /* Image editor */
-        .cropper-container { direction: ltr; font-size: 0; line-height: 0; position: relative; }
-        .cropper-view-box { outline: 2px solid #10b981; outline-color: rgba(16, 185, 129, 0.75); }
-
-        /* Sidebar item active state */
-        .sidebar-item.active {
-            background-color: rgba(16, 185, 129, 0.1);
-            color: #10b981;
+            --primary: #10b981;
+            --primary-dark: #059669;
+            --bg: #ffffff;
+            --surface: #f9fafb;
+            --text: #111827;
+            --text-light: #6b7280;
+            --border: #e5e7eb;
+            --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
         }
 
-        @media (min-width: 1024px) {
-            #main-content > section.app-screen {
-                margin-left: 16rem; /* Space for the 64w sidebar */
-            }
+        body.dark {
+            --bg: #0f172a;
+            --surface: #1e293b;
+            --text: #f8fafc;
+            --text-light: #cbd5e1;
+            --border: #334155;
         }
 
-        /* Ensure content doesn't get hidden behind sidebar on large screens */
-        @media (min-width: 1024px) {
-            .app-screen {
-                margin-left: 16rem; /* Matches w-64 */
-            }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            transition: background-color 0.3s, color 0.3s;
+            min-height: 100vh;
         }
 
-        /* Glassmorphism for cards - UI Improvement */
-        .theme-card {
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
+        .container {
+            max-width: 1024px;
+            margin: 0 auto;
+            padding: 20px;
         }
-        
-        /* Toggle switch */
-        .toggle-switch {
-            position: relative;
-            width: 48px;
-            height: 24px;
-            background-color: var(--bg-tertiary);
-            border-radius: 12px;
-            cursor: pointer;
-            transition: background-color 0.3s;
-        }
-        .toggle-switch.active { background-color: #10b981; }
-        .toggle-switch::after {
-            content: '';
-            position: absolute;
-            top: 2px;
-            left: 2px;
-            width: 20px;
-            height: 20px;
-            background-color: white;
-            border-radius: 50%;
-            transition: transform 0.3s;
-        }
-        .toggle-switch.active::after { transform: translateX(24px); }
-        
-        /* Pricing cards */
-        .pricing-card { transition: all 0.3s ease; }
-        .pricing-card.featured { 
-            border: 2px solid #10b981; 
-            transform: scale(1.05); 
-        }
-        
-        /* Share card preview */
-        .share-card {
-            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-            border-radius: 16px;
-            padding: 24px;
+
+        .header {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
             color: white;
+            padding: 30px 20px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            box-shadow: var(--shadow);
         }
-        
-        /* Skip link */
-        .skip-link { 
-            position: absolute; 
-            top: -40px; 
-            left: 0; 
-            background: #10b981; 
-            color: white; 
-            padding: 8px; 
-            text-decoration: none; 
-            z-index: 100; 
+
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 10px;
         }
-        .skip-link:focus { top: 0; }
-        
-        /* Toast notifications */
-        .toast-enter { animation: toastEnter 0.3s ease-out; }
-        @keyframes toastEnter {
-            from { transform: translateX(100%); opacity: 0; }
-            to { transform: translateX(0); opacity: 1; }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
         }
-        
-        /* Chart containers */
-        .chart-container { position: relative; height: 300px; }
-        
-        /* Tab indicator animation */
-        .tab-indicator { transition: all 0.3s ease; }
-        
-        /* Badge styles */
-        .badge { display: inline-flex; align-items: center; gap: 4px; }
-        
-        /* Focus visible */
-        *:focus-visible { outline: 2px solid #10b981; outline-offset: 2px; }
+
+        .screen {
+            display: none;
+            animation: fadeIn 0.3s ease-in;
+        }
+
+        .screen.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+
+            to {
+                opacity: 1;
+            }
+        }
+
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: var(--shadow);
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 600;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+            margin-right: 10px;
+            margin-top: 10px;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-dark);
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(16, 185, 129, 0.3);
+        }
+
+        .btn-secondary {
+            background: var(--surface);
+            color: var(--text);
+            border: 2px solid var(--border);
+            margin-top: 10px;
+        }
+
+        .btn-secondary:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .input-group input[type="file"],
+        .input-group input[type="text"],
+        .input-group textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            background: var(--bg);
+            color: var(--text);
+            font-family: inherit;
+            transition: border-color 0.3s;
+        }
+
+        .input-group input:focus,
+        .input-group textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        .image-preview {
+            width: 100%;
+            max-width: 300px;
+            border-radius: 8px;
+            margin: 20px 0;
+            display: none;
+            box-shadow: var(--shadow);
+        }
+
+        .diagnosis-card {
+            background: linear-gradient(135deg, var(--surface) 0%, rgba(16, 185, 129, 0.05) 100%);
+            border: 2px solid var(--primary);
+            border-radius: 12px;
+            padding: 30px;
+            margin: 20px 0;
+        }
+
+        .diagnosis-header {
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+        }
+
+        .diagnosis-header h2 {
+            color: var(--primary);
+            margin-bottom: 10px;
+        }
+
+        .disease-info {
+            margin-bottom: 25px;
+        }
+
+        .disease-info h3 {
+            font-size: 1.8rem;
+            color: var(--text);
+            margin-bottom: 10px;
+        }
+
+        .confidence {
+            font-size: 1.1rem;
+            margin-bottom: 10px;
+        }
+
+        .confidence-score {
+            color: var(--primary);
+            font-weight: 700;
+            font-size: 1.3rem;
+        }
+
+        .confidence-bar {
+            width: 100%;
+            height: 12px;
+            background: var(--border);
+            border-radius: 6px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+
+        .confidence-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), var(--primary-dark));
+            border-radius: 6px;
+            transition: width 0.5s ease;
+        }
+
+        .treatment-section {
+            margin-top: 25px;
+        }
+
+        .treatment-section h4 {
+            color: var(--primary);
+            margin-bottom: 15px;
+            font-size: 1.3rem;
+        }
+
+        .treatment-item {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: var(--bg);
+            border-left: 4px solid var(--primary);
+            border-radius: 4px;
+        }
+
+        .treatment-item strong {
+            display: block;
+            margin-bottom: 8px;
+            color: var(--text);
+        }
+
+        .treatment-item p {
+            color: var(--text-light);
+            line-height: 1.6;
+        }
+
+        .diagnosis-actions {
+            margin-top: 25px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border);
+        }
+
+        .history-item {
+            background: var(--bg);
+            padding: 15px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .history-disease h4 {
+            margin-bottom: 5px;
+        }
+
+        .history-date {
+            color: var(--text-light);
+            font-size: 0.9rem;
+        }
+
+        .badge {
+            background: var(--primary);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .loading-state,
+        .error-state,
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid var(--border);
+            border-top: 4px solid var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .error-state {
+            color: #dc2626;
+        }
+
+        .empty-state {
+            color: var(--text-light);
+        }
+
+        .nav-buttons {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 20px;
+        }
+
+        .theme-toggle {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            z-index: 1000;
+        }
+
+        .theme-toggle:hover {
+            background: var(--primary-dark);
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 1.8rem;
+            }
+
+            .container {
+                padding: 10px;
+            }
+
+            .card {
+                padding: 20px;
+            }
+
+            .btn {
+                width: 100%;
+                margin-right: 0;
+                margin-bottom: 10px;
+            }
+        }
     </style>
 </head>
-<body class="min-h-screen">
-    <a href="#main-content" class="skip-link">Skip to main content</a>
-    
-    <script>
-        // Check for saved theme preference or default to 'light'
-        const savedTheme = localStorage.getItem('greenguardian-theme') || 'light';
-        document.documentElement.setAttribute('data-theme', savedTheme);
-        if (savedTheme === 'dark') {
-            document.documentElement.classList.add('dark');
-        }
-    </script>
-    
-    <main id="main-content" class="min-h-screen flex flex-col">
-        
-        <section id="login-screen" class="screen active min-h-screen flex-col" aria-label="Login">
-            <div class="flex-1 flex items-center justify-center p-4 sm:p-6 lg:p-8">
-                <div class="w-full max-w-md">
-                    <div class="text-center mb-8">
-                        <div class="inline-flex items-center justify-center w-16 h-16 bg-primary-500 rounded-2xl mb-4 shadow-lg">
-                            <i data-lucide="leaf" class="w-8 h-8 text-white"></i>
-                        </div>
-                        <h1 class="text-2xl sm:text-3xl font-bold mb-2" style="color: var(--text-primary);">Welcome Back</h1>
-                        <p style="color: var(--text-secondary);">Sign in to diagnose your plants</p>
-                    </div>
-                    
-                    <div class="theme-card rounded-2xl shadow-xl p-6 sm:p-8">
-                        <form id="login-form" class="space-y-5">
-                            <div>
-                                <label for="login-email" class="block text-sm font-medium mb-1.5" style="color: var(--text-secondary);">Email Address</label>
-                                <div class="relative">
-                                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                        <i data-lucide="mail" class="w-5 h-5" style="color: var(--text-muted);"></i>
-                                    </div>
-                                    <input type="email" id="login-email" name="email" required autocomplete="email"
-                                        class="theme-input w-full pl-10 pr-4 py-3 rounded-xl placeholder-gray-400 focus:outline-none focus:ring-0"
-                                        placeholder="you@example.com">
-                                </div>
-                            </div>
-                            
-                            <div>
-                                <label for="login-password" class="block text-sm font-medium mb-1.5" style="color: var(--text-secondary);">Password</label>
-                                <div class="relative">
-                                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                        <i data-lucide="lock" class="w-5 h-5" style="color: var(--text-muted);"></i>
-                                    </div>
-                                    <input type="password" id="login-password" name="password" required autocomplete="current-password"
-                                        class="theme-input w-full pl-10 pr-12 py-3 rounded-xl placeholder-gray-400 focus:outline-none focus:ring-0"
-                                        placeholder="Enter your password">
-                                    <button type="button" id="toggle-login-password" class="absolute inset-y-0 right-0 pr-3 flex items-center" style="color: var(--text-muted);" aria-label="Toggle password visibility">
-                                        <i data-lucide="eye" class="w-5 h-5"></i>
-                                    </button>
-                                </div>
-                            </div>
-                            
-                            <div class="flex items-center justify-between">
-                                <label class="flex items-center gap-2 cursor-pointer">
-                                    <input type="checkbox" id="remember-me" class="w-4 h-4 text-primary-500 rounded border-gray-300 focus:ring-primary-500">
-                                    <span class="text-sm" style="color: var(--text-secondary);">Remember me</span>
-                                </label>
-                                <button type="button" id="forgot-password-btn" class="text-sm text-primary-600 hover:text-primary-700 font-medium">Forgot Password?</button>
-                            </div>
-                            
-                            <button type="submit" id="login-submit" class="btn-primary w-full bg-primary-500 text-white font-semibold py-3 px-4 rounded-xl hover:bg-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
-                                <span id="login-btn-text">Sign In</span>
-                                <i data-lucide="arrow-right" class="w-5 h-5" id="login-btn-icon"></i>
-                                <div id="login-spinner" class="hidden w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                            </button>
-                        </form>
-                        
-                        <div class="relative my-6">
-                            <div class="absolute inset-0 flex items-center"><div class="w-full border-t" style="border-color: var(--border-color);"></div></div>
-                            <div class="relative flex justify-center text-sm"><span class="px-2" style="background-color: var(--card-bg); color: var(--text-muted);">Or continue with</span></div>
-                        </div>
-                        
-                        <div class="grid grid-cols-2 gap-3">
-                            <button type="button" class="flex items-center justify-center gap-2 px-4 py-2.5 border rounded-xl hover:opacity-80 transition-colors" style="border-color: var(--border-color);">
-                                <svg class="w-5 h-5" viewBox="0 0 24 24">
-                                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-                                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-                                </svg>
-                                <span class="text-sm font-medium" style="color: var(--text-primary);">Google</span>
-                            </button>
-                            <button type="button" class="flex items-center justify-center gap-2 px-4 py-2.5 border rounded-xl hover:opacity-80 transition-colors" style="border-color: var(--border-color);">
-                                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24" style="color: var(--text-primary);">
-                                    <path d="M12 2C6.477 2 2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.879V14.89h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.989C18.343 21.129 22 16.99 22 12c0-5.523-4.477-10-10-10z"/>
-                                </svg>
-                                <span class="text-sm font-medium" style="color: var(--text-primary);">Apple</span>
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <p class="text-center mt-6" style="color: var(--text-secondary);">Don't have an account? <button type="button" id="go-to-signup" class="text-primary-600 hover:text-primary-700 font-semibold">Sign up</button></p>
-                </div>
-            </div>
-        </section>
-        
-        <section id="signup-screen" class="screen min-h-screen flex-col" aria-label="Sign Up">
-            <div class="flex-1 flex items-center justify-center p-4 sm:p-6 lg:p-8">
-                <div class="w-full max-w-md">
-                    <button type="button" id="back-to-login" class="mb-6 flex items-center gap-2 transition-colors" style="color: var(--text-secondary);" onmouseover="this.style.color='var(--text-primary)'" onmouseout="this.style.color='var(--text-secondary)'">
-                        <i data-lucide="arrow-left" class="w-5 h-5"></i>
-                        <span class="font-medium">Back to Login</span>
-                    </button>
-                    
-                    <div class="text-center mb-8">
-                        <div class="inline-flex items-center justify-center w-16 h-16 bg-primary-500 rounded-2xl mb-4 shadow-lg">
-                            <i data-lucide="sprout" class="w-8 h-8 text-white"></i>
-                        </div>
-                        <h1 class="text-2xl sm:text-3xl font-bold mb-2" style="color: var(--text-primary);">Create Account</h1>
-                        <p style="color: var(--text-secondary);">Join GreenGuardian today</p>
-                    </div>
-                    
-                    <div class="theme-card rounded-2xl shadow-xl p-6 sm:p-8">
-                        <form id="signup-form" class="space-y-4">
-                            <div>
-                                <label for="signup-name" class="block text-sm font-medium mb-1.5" style="color: var(--text-secondary);">Full Name</label>
-                                <div class="relative">
-                                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                        <i data-lucide="user" class="w-5 h-5" style="color: var(--text-muted);"></i>
-                                    </div>
-                                    <input type="text" id="signup-name" name="name" required autocomplete="name"
-                                        class="theme-input w-full pl-10 pr-4 py-3 rounded-xl placeholder-gray-400 focus:outline-none focus:ring-0"
-                                        placeholder="John Doe">
-                                </div>
-                            </div>
-                            
-                            <div>
-                                <label for="signup-email" class="block text-sm font-medium mb-1.5" style="color: var(--text-secondary);">Email Address</label>
-                                <div class="relative">
-                                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                        <i data-lucide="mail" class="w-5 h-5" style="color: var(--text-muted);"></i>
-                                    </div>
-                                    <input type="email" id="signup-email" name="email" required autocomplete="email"
-                                        class="theme-input w-full pl-10 pr-4 py-3 rounded-xl placeholder-gray-400 focus:outline-none focus:ring-0"
-                                        placeholder="you@example.com">
-                                </div>
-                            </div>
-                            
-                            <div>
-                                <label for="signup-password" class="block text-sm font-medium mb-1.5" style="color: var(--text-secondary);">Password</label>
-                                <div class="relative">
-                                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                        <i data-lucide="lock" class="w-5 h-5" style="color: var(--text-muted);"></i>
-                                    </div>
-                                    <input type="password" id="signup-password" name="password" required autocomplete="new-password" minlength="8"
-                                        class="theme-input w-full pl-10 pr-12 py-3 rounded-xl placeholder-gray-400 focus:outline-none focus:ring-0"
-                                        placeholder="Create a password">
-                                    <button type="button" id="toggle-signup-password" class="absolute inset-y-0 right-0 pr-3 flex items-center" style="color: var(--text-muted);" aria-label="Toggle password visibility">
-                                        <i data-lucide="eye" class="w-5 h-5"></i>
-                                    </button>
-                                </div>
-                                <p class="mt-1 text-xs" style="color: var(--text-muted);">Must be at least 8 characters</p>
-                            </div>
-                            
-                            <div>
-                                <label for="signup-confirm-password" class="block text-sm font-medium mb-1.5" style="color: var(--text-secondary);">Confirm Password</label>
-                                <div class="relative">
-                                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                        <i data-lucide="shield-check" class="w-5 h-5" style="color: var(--text-muted);"></i>
-                                    </div>
-                                    <input type="password" id="signup-confirm-password" name="confirmPassword" required autocomplete="new-password"
-                                        class="theme-input w-full pl-10 pr-12 py-3 rounded-xl placeholder-gray-400 focus:outline-none focus:ring-0"
-                                        placeholder="Confirm your password">
-                                    <button type="button" id="toggle-confirm-password" class="absolute inset-y-0 right-0 pr-3 flex items-center" style="color: var(--text-muted);" aria-label="Toggle password visibility">
-                                        <i data-lucide="eye" class="w-5 h-5"></i>
-                                    </button>
-                                </div>
-                            </div>
-                            
-                            <div class="flex items-start">
-                                <input type="checkbox" id="terms" name="terms" required class="mt-1 h-4 w-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500">
-                                <label for="terms" class="ml-2 text-sm" style="color: var(--text-secondary);">
-                                    I agree to the <a href="#" class="text-primary-600 hover:text-primary-700 font-medium">Terms of Service</a> and <a href="#" class="text-primary-600 hover:text-primary-700 font-medium">Privacy Policy</a>
-                                </label>
-                            </div>
-                            
-                            <button type="submit" id="signup-submit" class="btn-primary w-full bg-primary-500 text-white font-semibold py-3 px-4 rounded-xl hover:bg-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
-                                <span id="signup-btn-text">Create Account</span>
-                                <i data-lucide="arrow-right" class="w-5 h-5" id="signup-btn-icon"></i>
-                                <div id="signup-spinner" class="hidden w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                            </button>
-                        </form>
-                    </div>
-                    
-                    <p class="text-center mt-6" style="color: var(--text-secondary);">Already have an account? <button type="button" id="go-to-login" class="text-primary-600 hover:text-primary-700 font-semibold">Sign in</button></p>
-                </div>
-            </div>
-        </section>
-        
-        <section id="forgot-screen" class="screen min-h-screen flex-col" aria-label="Forgot Password">
-            <div class="flex-1 flex items-center justify-center p-4 sm:p-6 lg:p-8">
-                <div class="w-full max-w-md">
-                    <button type="button" id="back-to-login-from-forgot" class="mb-6 flex items-center gap-2 transition-colors" style="color: var(--text-secondary);" onmouseover="this.style.color='var(--text-primary)'" onmouseout="this.style.color='var(--text-secondary)'">
-                        <i data-lucide="arrow-left" class="w-5 h-5"></i>
-                        <span class="font-medium">Back to Login</span>
-                    </button>
-                    
-                    <div class="text-center mb-8">
-                        <div class="inline-flex items-center justify-center w-16 h-16 bg-primary-500 rounded-2xl mb-4 shadow-lg">
-                            <i data-lucide="key" class="w-8 h-8 text-white"></i>
-                        </div>
-                        <h1 class="text-2xl sm:text-3xl font-bold mb-2" style="color: var(--text-primary);">Reset Password</h1>
-                        <p style="color: var(--text-secondary);">Enter your email and we'll send you a reset link</p>
-                    </div>
-                    
-                    <div class="theme-card rounded-2xl shadow-xl p-6 sm:p-8">
-                        <form id="forgot-form" class="space-y-5">
-                            <div>
-                                <label for="forgot-email" class="block text-sm font-medium mb-1.5" style="color: var(--text-secondary);">Email Address</label>
-                                <div class="relative">
-                                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                        <i data-lucide="mail" class="w-5 h-5" style="color: var(--text-muted);"></i>
-                                    </div>
-                                    <input type="email" id="forgot-email" name="email" required autocomplete="email"
-                                        class="theme-input w-full pl-10 pr-4 py-3 rounded-xl placeholder-gray-400 focus:outline-none focus:ring-0"
-                                        placeholder="you@example.com">
-                                </div>
-                            </div>
-                            
-                            <button type="submit" id="forgot-submit" class="btn-primary w-full bg-primary-500 text-white font-semibold py-3 px-4 rounded-xl hover:bg-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
-                                <span id="forgot-btn-text">Send Reset Link</span>
-                                <i data-lucide="send" class="w-5 h-5" id="forgot-btn-icon"></i>
-                                <div id="forgot-spinner" class="hidden w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                            </button>
-                        </form>
-                        
-                        <div id="forgot-success" class="hidden text-center py-4">
-                            <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                                <i data-lucide="check" class="w-8 h-8 text-green-500"></i>
-                            </div>
-                            <h3 class="text-lg font-semibold mb-2" style="color: var(--text-primary);">Check Your Email</h3>
-                            <p style="color: var(--text-secondary);">We've sent a password reset link to your email address.</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
-        
-        <aside id="desktop-sidebar" class="hidden lg:flex flex-col w-64 fixed h-full theme-card border-r z-50" style="border-color: var(--border-color);">
-            <div class="p-6 flex items-center gap-3">
-                <div class="w-10 h-10 bg-primary-500 rounded-xl flex items-center justify-center shadow-lg shadow-primary-500/20">
-                    <i data-lucide="leaf" class="w-6 h-6 text-white"></i>
-                </div>
-                <span class="text-xl font-bold tracking-tight">GreenGuardian</span>
+
+<body>
+    <button class="theme-toggle" onclick="UIHandler.toggleTheme()">🌙</button>
+
+    <div class="container">
+        <!-- HOME SCREEN -->
+        <div id="home-screen" class="screen active">
+            <div class="header">
+                <h1>🌿 GreenGuardian</h1>
+                <p>AI-Powered Plant Disease Detection & Treatment Guide</p>
             </div>
 
-            <nav class="flex-1 px-4 space-y-2 mt-4">
-                <button onclick="showScreen('dashboard-screen')" class="sidebar-item active w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all hover:bg-primary-50 dark:hover:bg-primary-900/20 group">
-                    <i data-lucide="layout-grid" class="w-5 h-5 text-primary-500"></i>
-                    <span class="font-medium">Dashboard</span>
-                </button>
-                <button onclick="showScreen('encyclopedia-screen')" class="sidebar-item w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all hover:bg-primary-50 dark:hover:bg-primary-900/20 text-secondary">
-                    <i data-lucide="book-open" class="w-5 h-5 group-hover:text-primary-500"></i>
-                    <span class="font-medium">Plant Library</span>
-                </button>
-                <button onclick="showScreen('history-screen')" class="sidebar-item w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all hover:bg-primary-50 dark:hover:bg-primary-900/20 text-secondary">
-                    <i data-lucide="history" class="w-5 h-5 group-hover:text-primary-500"></i>
-                    <span class="font-medium">History</span>
-                </button>
-                <button onclick="showScreen('analytics-screen')" class="sidebar-item w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all hover:bg-primary-50 dark:hover:bg-primary-900/20 text-secondary">
-                    <i data-lucide="bar-chart-3" class="w-5 h-5 group-hover:text-primary-500"></i>
-                    <span class="font-medium">Analytics</span>
-                </button>
-            </nav>
+            <div class="card">
+                <h2>📸 Upload Plant Image</h2>
+                <p style="margin-bottom: 20px; color: var(--text-light);">
+                    Take a photo of your plant or upload an existing image to get an instant diagnosis.
+                </p>
 
-            <div class="p-4 border-t" style="border-color: var(--border-color);">
-                <button onclick="showScreen('settings-screen')" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-secondary hover:text-primary-500 transition-colors">
-                    <i data-lucide="settings" class="w-5 h-5"></i>
-                    <span class="font-medium">Settings</span>
-                </button>
-            </div>
-        </aside>
-
-        <header id="app-header" class="hidden sticky top-0 z-40 theme-card shadow-sm border-b lg:ml-64" style="border-color: var(--border-color);">
-            <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-                <div class="flex items-center gap-4">
-                    <button onclick="showScreen('dashboard-screen')" class="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full transition-colors group" title="Back to Home">
-                        <i data-lucide="home" class="w-5 h-5 text-primary-500 group-hover:scale-110 transition-transform"></i>
-                    </button>
-                    <h2 id="header-title" class="text-lg font-semibold capitalize">Dashboard</h2>
+                <div class="input-group">
+                    <label for="image-input">Choose Image</label>
+                    <input type="file" id="image-input" accept="image/*" />
                 </div>
 
-                <div class="flex items-center gap-3">
-                    <button id="theme-toggle" class="p-2.5 rounded-xl bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:text-primary-500 transition-all">
-                        <i data-lucide="sun" class="w-5 h-5 dark:hidden"></i>
-                        <i data-lucide="moon" class="w-5 h-5 hidden dark:block"></i>
+                <img id="image-preview" class="image-preview" alt="Preview" />
+
+                <div class="nav-buttons">
+                    <button id="submit-diagnosis-btn" class="btn btn-primary" disabled>
+                        🔍 Analyze Image
                     </button>
-                    <div class="h-8 w-[1px] bg-gray-200 dark:bg-gray-700 mx-1"></div>
-                    <button onclick="showScreen('profile-screen')" class="flex items-center gap-2 pl-1 pr-3 py-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-                        <img id="header-avatar" src="" class="w-8 h-8 rounded-full border border-primary-500" alt="User Avatar">
-                        <span id="header-user-name" class="text-sm font-medium hidden sm:block">User</span>
+                    <button class="btn btn-secondary" onclick="UIHandler.onViewHistory()">
+                        📋 View History
                     </button>
                 </div>
             </div>
-        </header>
-        
-        <section id="dashboard-screen" class="screen min-h-screen flex-col app-screen" aria-label="Dashboard">
-            <div class="flex-1 p-4 sm:p-6 lg:p-8">
-                <div class="w-full max-w-2xl mx-auto">
-                    <div id="daily-tip-card" class="theme-card rounded-2xl p-5 mb-6 card-hover cursor-pointer" onclick="showScreen('tips-screen')">
-                        <div class="flex items-start gap-4">
-                            <div class="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                                <i data-lucide="lightbulb" class="w-6 h-6 text-amber-600"></i>
-                            </div>
-                            <div class="flex-1">
-                                <p class="text-xs font-medium text-primary-600 uppercase tracking-wide mb-1">Daily Tip</p>
-                                <h3 id="daily-tip-title" class="font-semibold mb-1" style="color: var(--text-primary);">Water at the Base</h3>
-                                <p id="daily-tip-content" class="text-sm" style="color: var(--text-secondary);">Avoid overhead watering to prevent fungal diseases. Use drip irrigation or water directly at soil level.</p>
-                            </div>
-                            <i data-lucide="chevron-right" class="w-5 h-5 flex-shrink-0" style="color: var(--text-muted);"></i>
-                        </div>
-                    </div>
-                    
-                    <div class="text-center mb-8">
-                        <h2 class="text-2xl sm:text-3xl font-bold mb-2" style="color: var(--text-primary);">Diagnose Your Plant</h2>
-                        <p style="color: var(--text-secondary);">Upload a photo or take a picture to identify diseases and get treatment recommendations</p>
-                    </div>
-                    
-                    <div class="theme-card rounded-2xl shadow-xl overflow-hidden">
-                        <div class="flex border-b" style="border-color: var(--border-color);">
-                            <button type="button" id="tab-upload" class="flex-1 py-4 px-6 text-sm font-medium text-primary-600 border-b-2 border-primary-500 bg-primary-50 dark:bg-primary-900/20 flex items-center justify-center gap-2">
-                                <i data-lucide="upload" class="w-4 h-4"></i>Upload Image
-                            </button>
-                            <button type="button" id="tab-camera" class="flex-1 py-4 px-6 text-sm font-medium flex items-center justify-center gap-2" style="color: var(--text-secondary);">
-                                <i data-lucide="camera" class="w-4 h-4"></i>Take Photo
-                            </button>
-                        </div>
-                        
-                        <div id="upload-area" class="p-6 sm:p-8">
-                            <div id="drop-zone" class="drop-zone relative rounded-xl p-8 text-center cursor-pointer" role="button" tabindex="0" aria-label="Drag and drop image or click to upload">
-                                <input type="file" id="file-input" accept="image/*" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" aria-hidden="true">
-                                
-                                <div id="drop-default" class="pointer-events-none">
-                                    <div class="w-20 h-20 bg-primary-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                                        <i data-lucide="image-plus" class="w-10 h-10 text-primary-500"></i>
-                                    </div>
-                                    <h3 class="text-lg font-semibold mb-2" style="color: var(--text-primary);">Drop your image here</h3>
-                                    <p class="mb-4" style="color: var(--text-secondary);">or click to browse from your device</p>
-                                    <div class="flex items-center justify-center gap-2 text-sm" style="color: var(--text-muted);">
-                                        <i data-lucide="file-image" class="w-4 h-4"></i>
-                                        <span>Supports: JPG, PNG, WEBP (max 10MB)</span>
-                                    </div>
-                                </div>
-                                
-                                <div id="drop-preview" class="hidden pointer-events-none">
-                                    <img id="preview-image" src="" alt="Preview" class="image-preview mx-auto rounded-lg mb-4">
-                                    <p id="preview-filename" class="text-sm font-medium" style="color: var(--text-primary);"></p>
-                                    <button type="button" id="edit-image-btn" class="mt-2 text-sm text-primary-600 hover:text-primary-700 font-medium pointer-events-auto mr-4">
-                                        <i data-lucide="edit-3" class="w-4 h-4 inline mr-1"></i>Edit
-                                    </button>
-                                    <button type="button" id="remove-file" class="mt-2 text-sm text-red-600 hover:text-red-700 font-medium pointer-events-auto">
-                                        <i data-lucide="trash-2" class="w-4 h-4 inline mr-1"></i>Remove
-                                    </button>
-                                </div>
-                            </div>
-                            
-                            <div class="mt-6 flex flex-col sm:flex-row gap-3">
-                                <button type="button" id="analyze-btn" disabled class="btn-primary flex-1 bg-primary-500 text-white font-semibold py-3 px-6 rounded-xl hover:bg-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
-                                    <i data-lucide="scan-search" class="w-5 h-5"></i><span>Analyze Plant</span>
-                                </button>
-                                <button type="button" id="camera-btn" class="flex-1 sm:flex-none font-semibold py-3 px-6 rounded-xl focus:outline-none focus:ring-2 focus:ring-offset-2 flex items-center justify-center gap-2" style="background-color: var(--bg-tertiary); color: var(--text-primary);" onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">
-                                    <i data-lucide="camera" class="w-5 h-5"></i><span class="hidden sm:inline">Camera</span>
-                                </button>
-                            </div>
-                        </div>
-                        
-                        <div id="camera-area" class="hidden p-6 sm:p-8">
-                            <div class="relative bg-black rounded-xl overflow-hidden aspect-video">
-                                <video id="camera-video" class="w-full h-full object-cover" autoplay playsinline></video>
-                                <div id="camera-placeholder" class="absolute inset-0 flex flex-col items-center justify-center bg-gray-900 text-white">
-                                    <i data-lucide="camera-off" class="w-12 h-12 mb-3 opacity-50"></i>
-                                    <p class="text-gray-400">Camera access required</p>
-                                </div>
-                                <button type="button" id="capture-btn" class="absolute bottom-4 left-1/2 -translate-x-1/2 w-14 h-14 bg-white rounded-full border-4 border-gray-300 hover:border-primary-500 transition-colors hidden">
-                                    <div class="w-10 h-10 bg-primary-500 rounded-full mx-auto"></div>
-                                </button>
-                            </div>
-                            <div class="mt-4 flex justify-center">
-                                <button type="button" id="start-camera-btn" class="bg-primary-500 text-white font-semibold py-2 px-6 rounded-lg hover:bg-primary-600 flex items-center gap-2">
-                                    <i data-lucide="video" class="w-5 h-5"></i><span>Start Camera</span>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="mt-8">
-                        <div class="flex items-center justify-between mb-4">
-                            <h3 class="text-lg font-semibold" style="color: var(--text-primary);">Recent Diagnoses</h3>
-                            <button type="button" onclick="showScreen('history-screen')" class="text-sm text-primary-600 hover:text-primary-700 font-medium">View All</button>
-                        </div>
-                        <div class="grid gap-4" id="recent-diagnoses">
-                            </div>
-                    </div>
-                </div>
+
+            <div class="card">
+                <h3>✨ How It Works</h3>
+                <ol style="margin-left: 20px; line-height: 1.8; color: var(--text-light);">
+                    <li>Select an image of a plant leaf or entire plant</li>
+                    <li>Our AI model analyzes the image for disease signs</li>
+                    <li>Get instant diagnosis with confidence score</li>
+                    <li>View treatment options (organic & chemical)</li>
+                    <li>Access prevention tips</li>
+                </ol>
             </div>
-        </section>
-        
-        <section id="processing-screen" class="screen min-h-screen flex-col app-screen" aria-label="Processing">
-            <div class="flex-1 flex flex-col items-center justify-center p-4 sm:p-6 lg:p-8">
-                <div class="w-full max-w-md text-center">
-                    <div class="relative mb-8">
-                        <div class="w-48 h-48 mx-auto relative">
-                            <div class="absolute inset-0 border-4 border-primary-100 rounded-full"></div>
-                            <div class="absolute inset-0 border-4 border-primary-500 rounded-full border-t-transparent animate-spin"></div>
-                            <div class="absolute inset-4 bg-white dark:bg-gray-800 rounded-full shadow-lg flex items-center justify-center">
-                                <i data-lucide="scan-line" class="w-16 h-16 text-primary-500 animate-pulse"></i>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <h2 class="text-2xl font-bold mb-2" style="color: var(--text-primary);">Analyzing Your Plant</h2>
-                    <p style="color: var(--text-secondary);">Our AI is examining the image for signs of disease...</p>
-                    
-                    <div class="mt-8 space-y-3 text-left">
-                        <div class="flex items-center gap-3">
-                            <div class="w-6 h-6 rounded-full bg-primary-500 flex items-center justify-center flex-shrink-0">
-                                <i data-lucide="check" class="w-4 h-4 text-white"></i>
-                            </div>
-                            <span style="color: var(--text-primary);">Image uploaded successfully</span>
-                        </div>
-                        <div class="flex items-center gap-3">
-                            <div class="w-6 h-6 rounded-full bg-primary-500 flex items-center justify-center flex-shrink-0">
-                                <i data-lucide="check" class="w-4 h-4 text-white"></i>
-                            </div>
-                            <span style="color: var(--text-primary);">Preprocessing image</span>
-                        </div>
-                        <div class="flex items-center gap-3">
-                            <div class="w-6 h-6 rounded-full bg-primary-100 flex items-center justify-center flex-shrink-0 animate-pulse">
-                                <div class="w-2 h-2 bg-primary-500 rounded-full"></div>
-                            </div>
-                            <span class="font-medium" style="color: var(--text-primary);">Running AI diagnosis...</span>
-                        </div>
-                        <div class="flex items-center gap-3 opacity-50">
-                            <div class="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0" style="background-color: var(--bg-tertiary);">
-                                <div class="w-2 h-2 rounded-full" style="background-color: var(--text-muted);"></div>
-                            </div>
-                            <span style="color: var(--text-muted);">Generating treatment plan</span>
-                        </div>
-                    </div>
-                    
-                    <div class="mt-8 theme-card rounded-xl shadow-lg p-6">
-                        <div class="skeleton h-4 w-3/4 rounded mb-4"></div>
-                        <div class="skeleton h-3 w-full rounded mb-2"></div>
-                        <div class="skeleton h-3 w-5/6 rounded mb-2"></div>
-                        <div class="skeleton h-3 w-4/6 rounded"></div>
-                    </div>
-                </div>
+        </div>
+
+        <!-- DIAGNOSIS RESULT SCREEN -->
+        <div id="diagnosis-result-screen" class="screen">
+            <div class="header">
+                <h1>🌿 GreenGuardian</h1>
             </div>
-        </section>
-        
-        <section id="results-screen" class="screen min-h-screen flex-col app-screen" aria-label="Results">
-            <div class="flex-1 p-4 sm:p-6 lg:p-8">
-                <div class="max-w-4xl mx-auto">
-                    <div id="share-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                        <div class="theme-card rounded-2xl shadow-2xl max-w-md w-full p-6">
-                            <div class="flex items-center justify-between mb-4">
-                                <h3 class="text-lg font-semibold" style="color: var(--text-primary);">Share Diagnosis</h3>
-                                <button type="button" onclick="closeShareModal()" class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
-                                    <i data-lucide="x" class="w-5 h-5" style="color: var(--text-secondary);"></i>
-                                </button>
-                            </div>
-                            
-                            <div id="share-card-preview" class="share-card mb-4">
-                                <div class="flex items-center gap-2 mb-3">
-                                    <i data-lucide="leaf" class="w-5 h-5"></i>
-                                    <span class="font-semibold">GreenGuardian</span>
-                                </div>
-                                <img id="share-card-image" src="" alt="" class="w-full h-40 object-cover rounded-lg mb-3">
-                                <h4 id="share-card-disease" class="font-bold text-lg mb-1"></h4>
-                                <p id="share-card-confidence" class="text-sm opacity-90 mb-2"></p>
-                                <p class="text-xs opacity-75">greenguardian.app</p>
-                            </div>
-                            
-                            <div class="grid grid-cols-4 gap-2 mb-4">
-                                <button type="button" onclick="shareTo('copy')" class="flex flex-col items-center gap-1 p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
-                                    <i data-lucide="link" class="w-5 h-5 text-primary-600"></i>
-                                    <span class="text-xs" style="color: var(--text-secondary);">Copy</span>
-                                </button>
-                                <button type="button" onclick="shareTo('twitter')" class="flex flex-col items-center gap-1 p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
-                                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
-                                    <span class="text-xs" style="color: var(--text-secondary);">X</span>
-                                </button>
-                                <button type="button" onclick="shareTo('facebook')" class="flex flex-col items-center gap-1 p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
-                                    <svg class="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
-                                    <span class="text-xs" style="color: var(--text-secondary);">Facebook</span>
-                                </button>
-                                <button type="button" onclick="shareTo('whatsapp')" class="flex flex-col items-center gap-1 p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
-                                    <svg class="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-                                    <span class="text-xs" style="color: var(--text-secondary);">WhatsApp</span>
-                                </button>
-                            </div>
-                            
-                            <button type="button" onclick="downloadShareCard()" class="w-full bg-primary-500 text-white font-semibold py-3 px-4 rounded-xl hover:bg-primary-600 flex items-center justify-center gap-2">
-                                <i data-lucide="download" class="w-5 h-5"></i>Download Image
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <div class="theme-card rounded-2xl shadow-xl overflow-hidden mb-6">
-                        <div class="relative bg-gray-100 dark:bg-gray-800">
-                            <img id="result-image" src="" alt="Analyzed plant" class="w-full max-h-80 object-contain mx-auto">
-                            <div class="absolute top-4 right-4">
-                                <span id="severity-badge" class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-red-100 text-red-800">
-                                    <i data-lucide="alert-circle" class="w-4 h-4 mr-1"></i>Severe
-                                </span>
-                            </div>
-                        </div>
-                        
-                        <div class="p-6 sm:p-8">
-                            <div class="mb-6">
-                                <p class="text-xs uppercase tracking-wide mb-1" style="color: var(--text-muted);">Detected Condition</p>
-                                <h2 id="disease-name" class="text-2xl sm:text-3xl font-bold" style="color: var(--text-primary);">Tomato Late Blight</h2>
-                                <p id="scientific-name" class="italic mt-1" style="color: var(--text-secondary);">Phytophthora infestans</p>
-                            </div>
-                            
-                            <div class="mb-6">
-                                <div class="flex items-center justify-between mb-2">
-                                    <span class="text-sm font-medium" style="color: var(--text-secondary);">AI Confidence</span>
-                                    <span id="confidence-value" class="text-lg font-bold text-primary-600">94%</span>
-                                </div>
-                                <div class="w-full rounded-full h-3 overflow-hidden" style="background-color: var(--bg-tertiary);">
-                                    <div id="confidence-bar" class="progress-bar bg-gradient-to-r from-primary-400 to-primary-600 h-full rounded-full" style="width: 0%"></div>
-                                </div>
-                                <p class="text-xs mt-1" style="color: var(--text-muted);">Based on visual pattern analysis</p>
-                            </div>
-                            
-                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-                                <div class="rounded-lg p-3 text-center" style="background-color: var(--bg-tertiary);">
-                                    <i data-lucide="thermometer" class="w-5 h-5 text-orange-500 mx-auto mb-1"></i>
-                                    <p class="text-xs" style="color: var(--text-muted);">Spread Rate</p>
-                                    <p class="font-semibold" style="color: var(--text-primary);">Fast</p>
-                                </div>
-                                <div class="rounded-lg p-3 text-center" style="background-color: var(--bg-tertiary);">
-                                    <i data-lucide="calendar" class="w-5 h-5 text-blue-500 mx-auto mb-1"></i>
-                                    <p class="text-xs" style="color: var(--text-muted);">Season</p>
-                                    <p class="font-semibold" style="color: var(--text-primary);">Cool, Wet</p>
-                                </div>
-                                <div class="rounded-lg p-3 text-center" style="background-color: var(--bg-tertiary);">
-                                    <i data-lucide="droplets" class="w-5 h-5 text-cyan-500 mx-auto mb-1"></i>
-                                    <p class="text-xs" style="color: var(--text-muted);">Humidity</p>
-                                    <p class="font-semibold" style="color: var(--text-primary);">High</p>
-                                </div>
-                                <div class="rounded-lg p-3 text-center" style="background-color: var(--bg-tertiary);">
-                                    <i data-lucide="alert-triangle" class="w-5 h-5 text-red-500 mx-auto mb-1"></i>
-                                    <p class="text-xs" style="color: var(--text-muted);">Risk Level</p>
-                                    <p class="font-semibold" style="color: var(--text-primary);">High</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="theme-card rounded-2xl shadow-xl overflow-hidden mb-6">
-                        <div class="p-6 sm:p-8">
-                            <h3 class="text-xl font-bold mb-6 flex items-center gap-2" style="color: var(--text-primary);">
-                                <i data-lucide="stethoscope" class="w-6 h-6 text-primary-500"></i>Treatment Recommendations
-                            </h3>
-                            
-                            <div class="mb-6">
-                                <h4 class="text-sm font-semibold uppercase tracking-wide mb-3 flex items-center gap-2" style="color: var(--text-secondary);">
-                                    <span class="w-6 h-6 bg-red-100 text-red-600 rounded-full flex items-center justify-center text-xs">1</span>Immediate Actions
-                                </h4>
-                                <ul id="immediate-actions" class="space-y-2"></ul>
-                            </div>
-                            
-                            <div class="mb-6">
-                                <h4 class="text-sm font-semibold uppercase tracking-wide mb-3 flex items-center gap-2" style="color: var(--text-secondary);">
-                                    <span class="w-6 h-6 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center text-xs">2</span>Fungicide Treatment
-                                </h4>
-                                <div class="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-4">
-                                    <p id="fungicide-text" class="mb-3" style="color: var(--text-primary);"></p>
-                                    <div class="flex items-center gap-2 text-sm text-orange-700 dark:text-orange-400">
-                                        <i data-lucide="info" class="w-4 h-4"></i>
-                                        <span>Always follow label instructions for application rates</span>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <div>
-                                <h4 class="text-sm font-semibold uppercase tracking-wide mb-3 flex items-center gap-2" style="color: var(--text-secondary);">
-                                    <span class="w-6 h-6 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-xs">3</span>Prevention for Future
-                                </h4>
-                                <ul id="prevention-tips" class="space-y-2"></ul>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="bg-primary-50 dark:bg-primary-900/20 rounded-2xl p-6 mb-6">
-                        <h3 class="text-lg font-bold mb-3 flex items-center gap-2" style="color: var(--text-primary);">
-                            <i data-lucide="book-open" class="w-5 h-5 text-primary-600"></i>Learn More
-                        </h3>
-                        <p class="mb-4" style="color: var(--text-secondary);">Want to learn more about this disease and how to protect your plants?</p>
-                        <div class="flex flex-wrap gap-3">
-                            <button type="button" onclick="viewDiseaseDetail()" class="inline-flex items-center gap-2 bg-white dark:bg-gray-700 text-primary-600 font-medium px-4 py-2 rounded-lg hover:bg-primary-100 dark:hover:bg-gray-600 transition-colors">
-                                <i data-lucide="external-link" class="w-4 h-4"></i>View Detailed Guide
-                            </button>
-                            <button type="button" onclick="showToast('Expert consultation coming soon!', 'info')" class="inline-flex items-center gap-2 bg-white dark:bg-gray-700 text-primary-600 font-medium px-4 py-2 rounded-lg hover:bg-primary-100 dark:hover:bg-gray-600 transition-colors">
-                                <i data-lucide="message-circle" class="w-4 h-4"></i>Ask an Expert
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <div class="flex flex-col sm:flex-row gap-3">
-                        <button type="button" id="new-diagnosis-btn" class="btn-primary flex-1 bg-primary-500 text-white font-semibold py-3 px-6 rounded-xl hover:bg-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 flex items-center justify-center gap-2">
-                            <i data-lucide="refresh-cw" class="w-5 h-5"></i><span>New Diagnosis</span>
-                        </button>
-                        <button type="button" id="save-report-btn" class="flex-1 sm:flex-none font-semibold py-3 px-6 rounded-xl focus:outline-none focus:ring-2 focus:ring-offset-2 flex items-center justify-center gap-2" style="background-color: var(--bg-tertiary); color: var(--text-primary);" onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">
-                            <i data-lucide="bookmark" class="w-5 h-5"></i><span>Save</span>
-                        </button>
-                        <button type="button" onclick="openShareModal()" class="flex-1 sm:flex-none font-semibold py-3 px-6 rounded-xl focus:outline-none focus:ring-2 focus:ring-offset-2 flex items-center justify-center gap-2" style="background-color: var(--bg-tertiary); color: var(--text-primary);" onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">
-                            <i data-lucide="share-2" class="w-5 h-5"></i><span>Share</span>
-                        </button>
-                    </div>
-                </div>
+            <div id="diagnosis-result-container"></div>
+        </div>
+
+        <!-- HISTORY SCREEN -->
+        <div id="history-screen" class="screen">
+            <div class="header">
+                <h1>📋 Diagnosis History</h1>
             </div>
-        </section>
-        
-        <section id="image-editor-screen" class="screen min-h-screen flex-col app-screen" aria-label="Image Editor">
-            <div class="flex-1 flex flex-col">
-                <div class="theme-card border-b p-4" style="border-color: var(--border-color);">
-                    <div class="flex items-center justify-between max-w-4xl mx-auto">
-                        <button type="button" onclick="closeImageEditor()" class="flex items-center gap-2" style="color: var(--text-secondary);">
-                            <i data-lucide="x" class="w-5 h-5"></i>
-                            <span>Cancel</span>
-                        </button>
-                        <h2 class="font-semibold" style="color: var(--text-primary);">Edit Image</h2>
-                        <button type="button" onclick="applyImageEdits()" class="flex items-center gap-2 text-primary-600 font-medium">
-                            <i data-lucide="check" class="w-5 h-5"></i>
-                            <span>Apply</span>
-                        </button>
-                    </div>
-                </div>
-                
-                <div class="flex-1 flex items-center justify-center p-4 bg-gray-900">
-                    <div class="relative max-w-2xl w-full">
-                        <img id="editor-image" src="" alt="Edit" class="max-w-full max-h-[60vh]">
-                    </div>
-                </div>
-                
-                <div class="theme-card border-t p-4" style="border-color: var(--border-color);">
-                    <div class="max-w-4xl mx-auto">
-                        <div class="flex justify-center gap-2 mb-4">
-                            <button type="button" onclick="setEditorTool('crop')" class="editor-tool-btn active px-4 py-2 rounded-lg text-sm font-medium transition-colors" data-tool="crop">
-                                <i data-lucide="crop" class="w-4 h-4 inline mr-1"></i>Crop
-                            </button>
-                            <button type="button" onclick="setEditorTool('rotate')" class="editor-tool-btn px-4 py-2 rounded-lg text-sm font-medium transition-colors" data-tool="rotate">
-                                <i data-lucide="rotate-cw" class="w-4 h-4 inline mr-1"></i>Rotate
-                            </button>
-                            <button type="button" onclick="setEditorTool('adjust')" class="editor-tool-btn px-4 py-2 rounded-lg text-sm font-medium transition-colors" data-tool="adjust">
-                                <i data-lucide="sliders" class="w-4 h-4 inline mr-1"></i>Adjust
-                            </button>
-                        </div>
-                        
-                        <div id="crop-controls" class="editor-controls">
-                            <div class="flex justify-center gap-2">
-                                <button type="button" onclick="setCropRatio(1)" class="px-3 py-1.5 rounded-lg text-sm" style="background-color: var(--bg-tertiary); color: var(--text-primary);">1:1</button>
-                                <button type="button" onclick="setCropRatio(4/3)" class="px-3 py-1.5 rounded-lg text-sm" style="background-color: var(--bg-tertiary); color: var(--text-primary);">4:3</button>
-                                <button type="button" onclick="setCropRatio(16/9)" class="px-3 py-1.5 rounded-lg text-sm" style="background-color: var(--bg-tertiary); color: var(--text-primary);">16:9</button>
-                                <button type="button" onclick="setCropRatio(NaN)" class="px-3 py-1.5 rounded-lg text-sm" style="background-color: var(--bg-tertiary); color: var(--text-primary);">Free</button>
-                            </div>
-                        </div>
-                        
-                        <div id="rotate-controls" class="editor-controls hidden">
-                            <div class="flex justify-center gap-4">
-                                <button type="button" onclick="rotateImage(-90)" class="p-2 rounded-lg" style="background-color: var(--bg-tertiary);">
-                                    <i data-lucide="rotate-ccw" class="w-5 h-5" style="color: var(--text-primary);"></i>
-                                </button>
-                                <button type="button" onclick="rotateImage(90)" class="p-2 rounded-lg" style="background-color: var(--bg-tertiary);">
-                                    <i data-lucide="rotate-cw" class="w-5 h-5" style="color: var(--text-primary);"></i>
-                                </button>
-                                <button type="button" onclick="flipImage('h')" class="p-2 rounded-lg" style="background-color: var(--bg-tertiary);">
-                                    <i data-lucide="flip-horizontal" class="w-5 h-5" style="color: var(--text-primary);"></i>
-                                </button>
-                                <button type="button" onclick="flipImage('v')" class="p-2 rounded-lg" style="background-color: var(--bg-tertiary);">
-                                    <i data-lucide="flip-vertical" class="w-5 h-5" style="color: var(--text-primary);"></i>
-                                </button>
-                            </div>
-                        </div>
-                        
-                        <div id="adjust-controls" class="editor-controls hidden">
-                            <div class="space-y-3 max-w-md mx-auto">
-                                <div class="flex items-center gap-3">
-                                    <i data-lucide="sun" class="w-4 h-4" style="color: var(--text-muted);"></i>
-                                    <input type="range" id="brightness-slider" min="0" max="200" value="100" class="flex-1" oninput="updateImageAdjustments()">
-                                    <span class="text-sm w-10 text-right" style="color: var(--text-secondary);">100%</span>
-                                </div>
-                                <div class="flex items-center gap-3">
-                                    <i data-lucide="contrast" class="w-4 h-4" style="color: var(--text-muted);"></i>
-                                    <input type="range" id="contrast-slider" min="0" max="200" value="100" class="flex-1" oninput="updateImageAdjustments()">
-                                    <span class="text-sm w-10 text-right" style="color: var(--text-secondary);">100%</span>
-                                </div>
-                                <div class="flex items-center gap-3">
-                                    <i data-lucide="palette" class="w-4 h-4" style="color: var(--text-muted);"></i>
-                                    <input type="range" id="saturation-slider" min="0" max="200" value="100" class="flex-1" oninput="updateImageAdjustments()">
-                                    <span class="text-sm w-10 text-right" style="color: var(--text-secondary);">100%</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+
+            <div class="card">
+                <div id="history-list"></div>
+                <button class="btn btn-primary" onclick="UIHandler.onNewDiagnosis()">
+                    ← Back to Home
+                </button>
             </div>
-        </section>
-        
-        <section id="history-screen" class="screen min-h-screen flex-col app-screen" aria-label="History">
-            <div class="flex-1 p-4 sm:p-6 lg:p-8">
-                <div class="max-w-4xl mx-auto">
-                    <div class="flex items-center justify-between mb-6">
-                        <h2 class="text-2xl font-bold" style="color: var(--text-primary);">Diagnosis History</h2>
-                        <button type="button" onclick="exportHistory()" class="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 font-medium">
-                            <i data-lucide="download" class="w-4 h-4"></i>Export
-                        </button>
-                    </div>
-                    
-                    <div class="theme-card rounded-xl p-4 mb-6">
-                        <div class="flex flex-wrap gap-3">
-                            <select id="history-filter-date" onchange="filterHistory()" class="theme-input px-3 py-2 rounded-lg text-sm">
-                                <option value="all">All Time</option>
-                                <option value="7days">Last 7 Days</option>
-                                <option value="30days">Last 30 Days</option>
-                                <option value="3months">Last 3 Months</option>
-                            </select>
-                            <select id="history-filter-severity" onchange="filterHistory()" class="theme-input px-3 py-2 rounded-lg text-sm">
-                                <option value="all">All Severities</option>
-                                <option value="severe">Severe</option>
-                                <option value="moderate">Moderate</option>
-                                <option value="mild">Mild</option>
-                                <option value="none">Healthy</option>
-                            </select>
-                            <select id="history-filter-status" onchange="filterHistory()" class="theme-input px-3 py-2 rounded-lg text-sm">
-                                <option value="all">All Status</option>
-                                <option value="in_progress">In Progress</option>
-                                <option value="resolved">Resolved</option>
-                                <option value="worsened">Worsened</option>
-                            </select>
-                        </div>
-                    </div>
-                    
-                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-                        <div class="theme-card rounded-xl p-4 text-center">
-                            <p class="text-2xl font-bold text-primary-600" id="history-total">0</p>
-                            <p class="text-xs" style="color: var(--text-muted);">Total Diagnoses</p>
-                        </div>
-                        <div class="theme-card rounded-xl p-4 text-center">
-                            <p class="text-2xl font-bold text-red-500" id="history-severe">0</p>
-                            <p class="text-xs" style="color: var(--text-muted);">Severe</p>
-                        </div>
-                        <div class="theme-card rounded-xl p-4 text-center">
-                            <p class="text-2xl font-bold text-green-500" id="history-resolved">0</p>
-                            <p class="text-xs" style="color: var(--text-muted);">Resolved</p>
-                        </div>
-                        <div class="theme-card rounded-xl p-4 text-center">
-                            <p class="text-2xl font-bold" style="color: var(--text-primary);" id="history-avg-confidence">0%</p>
-                            <p class="text-xs" style="color: var(--text-muted);">Avg Confidence</p>
-                        </div>
-                    </div>
-                    
-                    <div id="history-list" class="space-y-4">
-                        </div>
-                    
-                    <div id="history-empty" class="hidden text-center py-12">
-                        <div class="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4" style="background-color: var(--bg-tertiary);">
-                            <i data-lucide="clipboard-list" class="w-10 h-10" style="color: var(--text-muted);"></i>
-                        </div>
-                        <h3 class="font-semibold mb-2" style="color: var(--text-primary);">No diagnoses yet</h3>
-                        <p class="text-sm mb-4" style="color: var(--text-secondary);">Start diagnosing your plants to build your history</p>
-                        <button type="button" onclick="showScreen('dashboard-screen')" class="bg-primary-500 text-white font-medium px-6 py-2 rounded-lg hover:bg-primary-600">
-                            Start Diagnosing
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </section>
-        
-        <section id="history-detail-screen" class="screen min-h-screen flex-col app-screen" aria-label="History Detail">
-            <div class="flex-1 p-4 sm:p-6 lg:p-8">
-                <div class="max-w-2xl mx-auto">
-                    <button type="button" onclick="showScreen('history-screen')" class="mb-4 flex items-center gap-2" style="color: var(--text-secondary);">
-                        <i data-lucide="arrow-left" class="w-5 h-5"></i>
-                        <span>Back to History</span>
-                    </button>
-                    
-                    <div id="history-detail-content">
-                        </div>
-                </div>
-            </div>
-        </section>
-        
-        <section id="encyclopedia-screen" class="screen min-h-screen flex-col app-screen" aria-label="Encyclopedia">
-            <div class="flex-1 p-4 sm:p-6 lg:p-8">
-                <div class="max-w-4xl mx-auto">
-                    <h2 class="text-2xl font-bold mb-2" style="color: var(--text-primary);">Plant Disease Library</h2>
-                    <p class="mb-6" style="color: var(--text-secondary);">Browse our comprehensive database of plant diseases and learn how to identify and treat them</p>
-                    
-                    <div class="relative mb-6">
-                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <i data-lucide="search" class="w-5 h-5" style="color: var(--text-muted);"></i>
-                        </div>
-                        <input type="text" id="encyclopedia-search" oninput="searchEncyclopedia()" 
-                            class="theme-input w-full pl-10 pr-4 py-3 rounded-xl" 
-                            placeholder="Search diseases, plants, or symptoms...">
-                    </div>
-                    
-                    <div class="flex flex-wrap gap-2 mb-6">
-                        <button type="button" onclick="filterEncyclopedia('all')" class="encyclo-category active px-4 py-2 rounded-full text-sm font-medium transition-colors" data-category="all">All</button>
-                        <button type="button" onclick="filterEncyclopedia('vegetables')" class="encyclo-category px-4 py-2 rounded-full text-sm font-medium transition-colors" data-category="vegetables">Vegetables</button>
-                        <button type="button" onclick="filterEncyclopedia('fruits')" class="encyclo-category px-4 py-2 rounded-full text-sm font-medium transition-colors" data-category="fruits">Fruits</button>
-                        <button type="button" onclick="filterEncyclopedia('flowers')" class="encyclo-category px-4 py-2 rounded-full text-sm font-medium transition-colors" data-category="flowers">Flowers</button>
-                        <button type="button" onclick="filterEncyclopedia('trees')" class="encyclo-category px-4 py-2 rounded-full text-sm font-medium transition-colors" data-category="trees">Trees</button>
-                    </div>
-                    
-                    <div id="encyclopedia-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                        </div>
-                </div>
-            </div>
-        </section>
-        
-        <section id="disease-detail-screen" class="screen min-h-screen flex-col app-screen" aria-label="Disease Detail">
-            <div class="flex-1">
-                <div id="disease-detail-content">
-                    </div>
-            </div>
-        </section>
-        
-        <section id="profile-screen" class="screen min-h-screen flex-col app-screen" aria-label="Profile">
-            <div class="flex-1 p-4 sm:p-6 lg:p-8">
-                <div class="max-w-2xl mx-auto">
-                    <h2 class="text-2xl font-bold mb-6" style="color: var(--text-primary);">Profile</h2>
-                    
-                    <div class="theme-card rounded-2xl shadow-lg p-6 mb-6">
-                        <div class="flex items-center gap-4 mb-6">
-                            <div class="relative">
-                                <div class="w-20 h-20 bg-primary-100 rounded-full flex items-center justify-center">
-                                    <i data-lucide="user" class="w-10 h-10 text-primary-600"></i>
-                                </div>
-                                <button type="button" class="absolute bottom-0 right-0 w-8 h-8 bg-primary-500 rounded-full flex items-center justify-center text-white hover:bg-primary-600">
-                                    <i data-lucide="camera" class="w-4 h-4"></i>
-                                </button>
-                            </div>
-                            <div>
-                                <h3 id="profile-name" class="text-xl font-bold" style="color: var(--text-primary);">John Doe</h3>
-                                <p id="profile-email" class="text-sm" style="color: var(--text-secondary);">john@example.com</p>
-                                <span id="profile-plan" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-800 mt-1">Free Plan</span>
-                            </div>
-                        </div>
-                        
-                        <div class="grid grid-cols-3 gap-4 py-4 border-t" style="border-color: var(--border-color);">
-                            <div class="text-center">
-                                <p id="profile-diagnoses" class="text-2xl font-bold" style="color: var(--text-primary);">0</p>
-                                <p class="text-xs" style="color: var(--text-muted);">Diagnoses</p>
-                            </div>
-                            <div class="text-center">
-                                <p id="profile-plants" class="text-2xl font-bold" style="color: var(--text-primary);">0</p>
-                                <p class="text-xs" style="color: var(--text-muted);">Plants</p>
-                            </div>
-                            <div class="text-center">
-                                <p id="profile-streak" class="text-2xl font-bold" style="color: var(--text-primary);">0</p>
-                                <p class="text-xs" style="color: var(--text-muted);">Day Streak</p>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="theme-card rounded-2xl shadow-lg p-6 mb-6">
-                        <h3 class="font-semibold mb-4" style="color: var(--text-primary);">Edit Profile</h3>
-                        <form id="profile-form" class="space-y-4">
-                            <div>
-                                <label class="block text-sm font-medium mb-1" style="color: var(--text-secondary);">Full Name</label>
-                                <input type="text" id="profile-edit-name" class="theme-input w-full px-4 py-2 rounded-lg">
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium mb-1" style="color: var(--text-secondary);">Email</label>
-                                <input type="email" id="profile-edit-email" class="theme-input w-full px-4 py-2 rounded-lg" disabled>
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium mb-1" style="color: var(--text-secondary);">Location</label>
-                                <div class="relative">
-                                    <i data-lucide="map-pin" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style="color: var(--text-muted);"></i>
-                                    <input type="text" id="profile-location" class="theme-input w-full pl-10 pr-4 py-2 rounded-lg" placeholder="City, Country">
-                                </div>
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium mb-1" style="color: var(--text-secondary);">Bio</label>
-                                <textarea id="profile-bio" rows="3" class="theme-input w-full px-4 py-2 rounded-lg" placeholder="Tell us about your gardening journey..."></textarea>
-                            </div>
-                            <button type="submit" class="w-full bg-primary-500 text-white font-medium py-2 rounded-lg hover:bg-primary-600">
-                                Save Changes
-                            </button>
-                        </form>
-                    </div>
-                    
-                    <div class="theme-card rounded-2xl shadow-lg p-6">
-                        <h3 class="font-semibold mb-4" style="color: var(--text-primary);">Achievements</h3>
-                        <div class="grid grid-cols-4 sm:grid-cols-6 gap-4">
-                            <div class="text-center">
-                                <div class="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-1">
-                                    <i data-lucide="award" class="w-6 h-6 text-amber-600"></i>
-                                </div>
-                                <p class="text-xs" style="color: var(--text-muted);">First Diagnosis</p>
-                            </div>
-                            <div class="text-center">
-                                <div class="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-1">
-                                    <i data-lucide="flame" class="w-6 h-6 text-gray-400"></i>
-                                </div>
-                                <p class="text-xs" style="color: var(--text-muted);">7-Day Streak</p>
-                            </div>
-                            <div class="text-center">
-                                <div class="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-1">
-                                    <i data-lucide="sprout" class="w-6 h-6 text-gray-400"></i>
-                                </div>
-                                <p class="text-xs" style="color: var(--text-muted);">Plant Expert</p>
-                            </div>
-                            <div class="text-center">
-                                <div class="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-1">
-                                    <i data-lucide="share-2" class="w-6 h-6 text-gray-400"></i>
-                                </div>
-                                <p class="text-xs" style="color: var(--text-muted);">Sharer</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
-        
-        <section id="settings-screen" class="screen min-h-screen flex-col app-screen" aria-label="Settings">
-            <div class="flex-1 p-4 sm:p-6 lg:p-8">
-                <div class="max-w-2xl mx-auto">
-                    <h2 class="text-2xl font-bold mb-6" style="color: var(--text-primary);">Settings</h2>
-                    
-                    <div class="theme-card rounded-2xl shadow-lg p-6 mb-6">
-                        <h3 class="font-semibold mb-4 flex items-center gap-2" style="color: var(--text-primary);">
-                            <i data-lucide="palette" class="w-5 h-5 text-primary-500"></i>Appearance
-                        </h3>
-                        
-                        <div class="flex items-center justify-between py-3 border-b" style="border-color: var(--border-color);">
-                            <div>
-                                <p class="font-medium" style="color: var(--text-primary);">Dark Mode</p>
-                                <p class="text-sm" style="color: var(--text-muted);">Switch between light and dark themes</p>
-                            </div>
-                            <button type="button" id="settings-theme-toggle" onclick="toggleTheme()" class="toggle-switch" aria-label="Toggle dark mode"></button>
-                        </div>
-                        
-                        <div class="flex items-center justify-between py-3">
-                            <div>
-                                <p class="font-medium" style="color: var(--text-primary);">Accent Color</p>
-                                <p class="text-sm" style="color: var(--text-muted);">Choose your preferred accent color</p>
-                            </div>
-                            <div class="flex gap-2">
-                                <button type="button" onclick="setAccentColor('green')" class="w-8 h-8 rounded-full bg-emerald-500 ring-2 ring-offset-2 ring-emerald-500"></button>
-                                <button type="button" onclick="setAccentColor('blue')" class="w-8 h-8 rounded-full bg-blue-500"></button>
-                                <button type="button" onclick="setAccentColor('purple')" class="w-8 h-8 rounded-full bg-purple-500"></button>
-                                <button type="button" onclick="setAccentColor('orange')" class="w-8 h-8 rounded-full bg-orange-500"></button>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="theme-card rounded-2xl shadow-lg p-6 mb-6">
-                        <h3 class="font-semibold mb-4 flex items-center gap-2" style="color: var(--text-primary);">
-                            <i data-lucide="bell" class="w-5 h-5 text-primary-500"></i>Notifications
-                        </h3>
-                        
-                        <div class="space-y-4">
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <p class="font-medium" style="color: var(--text-primary);">Push Notifications</p>
-                                    <p class="text-sm" style="color: var(--text-muted);">Receive notifications on your device</p>
-                                </div>
-                                <button type="button" onclick="toggleSetting(this, 'pushNotifications')" class="toggle-switch active" aria-label="Toggle push notifications"></button>
-                            </div>
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <p class="font-medium" style="color: var(--text-primary);">Treatment Reminders</p>
-                                    <p class="text-sm" style="color: var(--text-muted);">Remind me to apply treatments</p>
-                                </div>
-                                <button type="button" onclick="toggleSetting(this, 'treatmentReminders')" class="toggle-switch active" aria-label="Toggle treatment reminders"></button>
-                            </div>
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <p class="font-medium" style="color: var(--text-primary);">Weather Alerts</p>
-                                    <p class="text-sm" style="color: var(--text-muted);">Get disease risk alerts based on weather</p>
-                                </div>
-                                <button type="button" onclick="toggleSetting(this, 'weatherAlerts')" class="toggle-switch" aria-label="Toggle weather alerts"></button>
-                            </div>
-                            <div class="flex items-center justify-between">
-                                <div>
-                                    <p class="font-medium" style="color: var(--text-primary);">Weekly Tips</p>
-                                    <p class="text-sm" style="color: var(--text-muted);">Receive weekly gardening tips</p>
-                                </div>
-                                <button type="button" onclick="toggleSetting(this, 'weeklyTips')" class="toggle-switch active" aria-label="Toggle weekly tips"></button>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="theme-card rounded-2xl shadow-lg p-6 mb-6">
-                        <h3 class="font-semibold mb-4 flex items-center gap-2" style="color: var(--text-primary);">
-                            <i data-lucide="shield" class="w-5 h-5 text-primary-500"></i>Privacy & Data
-                        </h3>
-                        
-                        <div class="space-y-3">
-                            <button type="button" onclick="downloadUserData()" class="w-full flex items-center justify-between p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                                <div class="flex items-center gap-3">
-                                    <i data-lucide="download" class="w-5 h-5" style="color: var(--text-muted);"></i>
-                                    <span style="color: var(--text-primary);">Download My Data</span>
-                                </div>
-                                <i data-lucide="chevron-right" class="w-5 h-5" style="color: var(--text-muted);"></i>
-                            </button>
-                            <button type="button" onclick="clearHistory()" class="w-full flex items-center justify-between p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                                <div class="flex items-center gap-3">
-                                    <i data-lucide="trash-2" class="w-5 h-5" style="color: var(--text-muted);"></i>
-                                    <span style="color: var(--text-primary);">Clear History</span>
-                                </div>
-                                <i data-lucide="chevron-right" class="w-5 h-5" style="color: var(--text-muted);"></i>
-                            </button>
-                            <button type="button" onclick="deleteAccount()" class="w-full flex items-center justify-between p-3 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
-                                <div class="flex items-center gap-3">
-                                    <i data-lucide="user-x" class="w-5 h-5 text-red-500"></i>
-                                    <span class="text-red-500">Delete Account</span>
-                                </div>
-                                <i data-lucide="chevron-right" class="w-5 h-5 text-red-500"></i>
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <div class="theme-card rounded-2xl shadow-lg p-6">
-                        <h3 class="font-semibold mb-4 flex items-center gap-2" style="color: var(--text-primary);">
-                            <i data-lucide="info" class="w-5 h-5 text-primary-500"></i>About
-                        </h3>
-                        
-                        <div class="space-y-3">
-                            <div class="flex items-center justify-between py-2">
-                                <span style="color: var(--text-secondary);">Version</span>
-                                <span style="color: var(--text-primary);">2.0.0</span>
-                            </div>
-                            <button type="button" onclick="showScreen('pricing-screen')" class="w-full flex items-center justify-between p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                                <span style="color: var(--text-primary);">Upgrade to Pro</span>
-                                <span class="text-xs bg-primary-100 text-primary-800 px-2 py-1 rounded-full">New</span>
-                            </button>
-                            <button type="button" onclick="showToast('Help center coming soon!', 'info')" class="w-full flex items-center justify-between p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                                <span style="color: var(--text-primary);">Help & Support</span>
-                                <i data-lucide="chevron-right" class="w-5 h-5" style="color: var(--text-muted);"></i>
-                            </button>
-                            <button type="button" onclick="showToast('Terms page coming soon!', 'info')" class="w-full flex items-center justify-between p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                                <span style="color: var(--text-primary);">Terms of Service</span>
-                                <i data-lucide="chevron-right" class="w-5 h-5" style="color: var(--text-muted);"></i>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
-        
-        <section id="tips-screen" class="screen min-h-screen flex-col app-screen" aria-label="Tips">
-            <div class="flex-1 p-4 sm:p-6 lg:p-8">
-                <div class="max-w-4xl mx-auto">
-                    <h2 class="text-2xl font-bold mb-2" style="color: var(--text-primary);">Plant Care Tips</h2>
-                    <p class="mb-6" style="color: var(--text-secondary);">Daily tips and expert advice to keep your plants healthy</p>
-                    
-                    <div id="featured-tip" class="theme-card rounded-2xl shadow-lg overflow-hidden mb-6">
-                        </div>
-                    
-                    <div class="flex flex-wrap gap-2 mb-6">
-                        <button type="button" onclick="filterTips('all')" class="tips-category active px-4 py-2 rounded-full text-sm font-medium transition-colors" data-category="all">All Tips</button>
-                        <button type="button" onclick="filterTips('prevention')" class="tips-category px-4 py-2 rounded-full text-sm font-medium transition-colors" data-category="prevention">Prevention</button>
-                        <button type="button" onclick="filterTips('treatment')" class="tips-category px-4 py-2 rounded-full text-sm font-medium transition-colors" data-category="treatment">Treatment</button>
-                        <button type="button" onclick="filterTips('seasonal')" class="tips-category px-4 py-2 rounded-full text-sm font-medium transition-colors" data-category="seasonal">Seasonal</button>
-                    </div>
-                    
-                    <div id="tips-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        </div>
-                </div>
-            </div>
-        </section>
-        
-        <section id="pricing-screen" class="screen min-h-screen flex-col app-screen" aria-label="Pricing">
-            <div class="flex-1 p-4 sm:p-6 lg:p-8">
-                <div class="max-w-5xl mx-auto">
-                    <div class="text-center mb-8">
-                        <h2 class="text-3xl font-bold mb-2" style="color: var(--text-primary);">Choose Your Plan</h2>
-                        <p style="color: var(--text-secondary);">Unlock unlimited diagnoses and premium features</p>
-                    </div>
-                    
-                    <div class="flex justify-center items-center gap-4 mb-8">
-                        <span class="text-sm font-medium" style="color: var(--text-primary);">Monthly</span>
-                        <button type="button" id="billing-toggle" onclick="toggleBilling()" class="toggle-switch active w-14" aria-label="Toggle billing period"></button>
-                        <span class="text-sm font-medium" style="color: var(--text-primary);">Yearly</span>
-                        <span class="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">Save 20%</span>
-                    </div>
-                    
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <div class="pricing-card theme-card rounded-2xl shadow-lg p-6">
-                            <h3 class="text-xl font-bold mb-2" style="color: var(--text-primary);">Free</h3>
-                            <p class="text-sm mb-4" style="color: var(--text-secondary);">Perfect for getting started</p>
-                            <div class="mb-6">
-                                <span class="text-4xl font-bold" style="color: var(--text-primary);">$0</span>
-                                <span style="color: var(--text-muted);">/month</span>
-                            </div>
-                            <ul class="space-y-3 mb-6">
-                                <li class="flex items-center gap-2 text-sm" style="color: var(--text-primary);">
-                                    <i data-lucide="check" class="w-4 h-4 text-primary-500"></i>5 diagnoses per month
-                                </li>
-                                <li class="flex items-center gap-2 text-sm" style="color: var(--text-primary);">
-                                    <i data-lucide="check" class="w-4 h-4 text-primary-500"></i>Basic treatment info
-                                </li>
-                                <li class="flex items-center gap-2 text-sm" style="color: var(--text-primary);">
-                                    <i data-lucide="check" class="w-4 h-4 text-primary-500"></i>30-day history
-                                </li>
-                                <li class="flex items-center gap-2 text-sm" style="color: var(--text-muted);">
-                                    <i data-lucide="x" class="w-4 h-4"></i>Expert consultation
-                                </li>
-                                <li class="flex items-center gap-2 text-sm" style="color: var(--text-muted);">
-                                    <i data-lucide="x" class="w-4 h-4"></i>Batch upload
-                                </li>
-                            </ul>
-                            <button type="button" class="w-full py-3 px-4 rounded-xl font-medium border-2 border-primary-500 text-primary-500 hover:bg-primary-50 transition-colors">
-                                Current Plan
-                            </button>
-                        </div>
-                        
-                        <div class="pricing-card featured theme-card rounded-2xl shadow-xl p-6 relative">
-                            <div class="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary-500 text-white text-xs font-medium px-3 py-1 rounded-full">
-                                Most Popular
-                            </div>
-                            <h3 class="text-xl font-bold mb-2" style="color: var(--text-primary);">Pro</h3>
-                            <p class="text-sm mb-4" style="color: var(--text-secondary);">For serious plant parents</p>
-                            <div class="mb-6">
-                                <span class="text-4xl font-bold" style="color: var(--text-primary);">$4.99</span>
-                                <span style="color: var(--text-muted);">/month</span>
-                            </div>
-                            <ul class="space-y-3 mb-6">
-                                <li class="flex items-center gap-2 text-sm" style="color: var(--text-primary);">
-                                    <i data-lucide="check" class="w-4 h-4 text-primary-500"></i>Unlimited diagnoses
-                                </li>
-                                <li class="flex items-center gap-2 text-sm" style="color: var(--text-primary);">
-                                    <i data-lucide="check" class="w-4 h-4 text-primary-500"></i>Detailed reports
-                                </li>
-                                <li class="flex items-center gap-2 text-sm" style="color: var(--text-primary);">
-                                    <i data-lucide="check" class="w-4 h-4 text-primary-500"></i>Unlimited history
-                                </li>
-                                <li class="flex items-center gap-2 text-sm" style="color: var(--text-primary);">
-                                    <i data-lucide="check" class="w-4 h-4 text-primary-500"></i>Expert chat support
-                                </li>
-                                <li class="flex items-center gap-2 text-sm" style="color: var(--text-primary);">
-                                    <i data-lucide="check" class="w-4 h-4 text-primary-500"></i>Batch upload (5 images)
-                                </li>
-                            </ul>
-                            <button type="button" onclick="upgradePlan('pro')" class="btn-primary w-full bg-primary-500 text-white py-3 px-4 rounded-xl font-medium hover:bg-primary-600">
-                                Start Free Trial
-                            </button>
-                        </div>
-                        
-                        <div class="pricing-card theme-card rounded-2xl shadow-lg p-6">
-                            <h3 class="text-xl font-bold mb-2" style="color: var(--text-primary);">Enterprise</h3>
-                            <p class="text-sm mb-4" style="color: var(--text-secondary);">For farms & businesses</p>
-                            <div class="mb-6">
-                                <span class="text-4xl font-bold" style="color: var(--text-primary);">$49</span>
-                                <span style="color: var(--text-muted);">/month</span>
-                            </div>
-                            <ul class="space-y-3 mb-6">
-                                <li class="flex items-center gap-2 text-sm" style="color: var(--text-primary);">
-                                    <i data-lucide="check" class="w-4 h-4 text-primary-500"></i>Everything in Pro
-                                </li>
-                                <li class="flex items-center gap-2 text-sm" style="color: var(--text-primary);">
-                                    <i data-lucide="check" class="w-4 h-4 text-primary-500"></i>Unlimited batch upload
-                                </li>
-                                <li class="flex items-center gap-2 text-sm" style="color: var(--text-primary);">
-                                    <i data-lucide="check" class="w-4 h-4 text-primary-500"></i>API access
-                                </li>
-                                <li class="flex items-center gap-2 text-sm" style="color: var(--text-primary);">
-                                    <i data-lucide="check" class="w-4 h-4 text-primary-500"></i>Priority video support
-                                </li>
-                                <li class="flex items-center gap-2 text-sm" style="color: var(--text-primary);">
-                                    <i data-lucide="check" class="w-4 h-4 text-primary-500"></i>Custom integrations
-                                </li>
-                            </ul>
-                            <button type="button" onclick="contactSales()" class="w-full py-3 px-4 rounded-xl font-medium border-2 transition-colors" style="border-color: var(--border-color); color: var(--text-primary);" onmouseover="this.style.borderColor='#10b981';this.style.color='#10b981'" onmouseout="this.style.borderColor='var(--border-color)';this.style.color='var(--text-primary)'">
-                                Contact Sales
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <div class="mt-12">
-                        <h3 class="text-xl font-bold text-center mb-6" style="color: var(--text-primary);">Frequently Asked Questions</h3>
-                        <div class="max-w-2xl mx-auto space-y-3">
-                            <div class="theme-card rounded-xl p-4">
-                                <button type="button" onclick="toggleFaq(this)" class="w-full flex items-center justify-between text-left">
-                                    <span class="font-medium" style="color: var(--text-primary);">Can I cancel my subscription anytime?</span>
-                                    <i data-lucide="chevron-down" class="w-5 h-5 transition-transform" style="color: var(--text-muted);"></i>
-                                </button>
-                                <p class="hidden mt-2 text-sm" style="color: var(--text-secondary);">Yes, you can cancel your subscription at any time. You'll continue to have access until the end of your billing period.</p>
-                            </div>
-                            <div class="theme-card rounded-xl p-4">
-                                <button type="button" onclick="toggleFaq(this)" class="w-full flex items-center justify-between text-left">
-                                    <span class="font-medium" style="color: var(--text-primary);">What payment methods do you accept?</span>
-                                    <i data-lucide="chevron-down" class="w-5 h-5 transition-transform" style="color: var(--text-muted);"></i>
-                                </button>
-                                <p class="hidden mt-2 text-sm" style="color: var(--text-secondary);">We accept all major credit cards, PayPal, and Apple Pay. Enterprise customers can also pay by invoice.</p>
-                            </div>
-                            <div class="theme-card rounded-xl p-4">
-                                <button type="button" onclick="toggleFaq(this)" class="w-full flex items-center justify-between text-left">
-                                    <span class="font-medium" style="color: var(--text-primary);">Is there a free trial?</span>
-                                    <i data-lucide="chevron-down" class="w-5 h-5 transition-transform" style="color: var(--text-muted);"></i>
-                                </button>
-                                <p class="hidden mt-2 text-sm" style="color: var(--text-secondary);">Yes! Pro plans come with a 7-day free trial. No credit card required to start.</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
-        
-        <section id="analytics-screen" class="screen min-h-screen flex-col app-screen" aria-label="Analytics">
-            <div class="flex-1 p-4 sm:p-6 lg:p-8">
-                <div class="max-w-5xl mx-auto">
-                    <div class="flex items-center justify-between mb-6">
-                        <div>
-                            <h2 class="text-2xl font-bold" style="color: var(--text-primary);">Analytics Dashboard</h2>
-                            <p style="color: var(--text-secondary);">Track your plant health journey</p>
-                        </div>
-                        <select id="analytics-time-range" onchange="updateAnalytics()" class="theme-input px-3 py-2 rounded-lg text-sm">
-                            <option value="7days">Last 7 Days</option>
-                            <option value="30days">Last 30 Days</option>
-                            <option value="3months">Last 3 Months</option>
-                            <option value="1year">Last Year</option>
-                        </select>
-                    </div>
-                    
-                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-                        <div class="theme-card rounded-xl p-4">
-                            <div class="flex items-center gap-2 mb-2">
-                                <i data-lucide="activity" class="w-4 h-4 text-primary-500"></i>
-                                <span class="text-xs" style="color: var(--text-muted);">Total Diagnoses</span>
-                            </div>
-                            <p id="analytics-total" class="text-2xl font-bold" style="color: var(--text-primary);">0</p>
-                            <p id="analytics-total-change" class="text-xs text-green-500">+0% from last period</p>
-                        </div>
-                        <div class="theme-card rounded-xl p-4">
-                            <div class="flex items-center gap-2 mb-2">
-                                <i data-lucide="alert-triangle" class="w-4 h-4 text-red-500"></i>
-                                <span class="text-xs" style="color: var(--text-muted);">Issues Found</span>
-                            </div>
-                            <p id="analytics-issues" class="text-2xl font-bold" style="color: var(--text-primary);">0</p>
-                            <p id="analytics-issues-change" class="text-xs text-red-500">+0% from last period</p>
-                        </div>
-                        <div class="theme-card rounded-xl p-4">
-                            <div class="flex items-center gap-2 mb-2">
-                                <i data-lucide="check-circle" class="w-4 h-4 text-green-500"></i>
-                                <span class="text-xs" style="color: var(--text-muted);">Resolved</span>
-                            </div>
-                            <p id="analytics-resolved" class="text-2xl font-bold" style="color: var(--text-primary);">0</p>
-                            <p id="analytics-resolved-change" class="text-xs text-green-500">+0% from last period</p>
-                        </div>
-                        <div class="theme-card rounded-xl p-4">
-                            <div class="flex items-center gap-2 mb-2">
-                                <i data-lucide="target" class="w-4 h-4 text-blue-500"></i>
-                                <span class="text-xs" style="color: var(--text-muted);">Avg Confidence</span>
-                            </div>
-                            <p id="analytics-confidence" class="text-2xl font-bold" style="color: var(--text-primary);">0%</p>
-                            <p class="text-xs" style="color: var(--text-muted);">Across all diagnoses</p>
-                        </div>
-                    </div>
-                    
-                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-                        <div class="theme-card rounded-xl p-6">
-                            <h3 class="font-semibold mb-4" style="color: var(--text-primary);">Diagnoses Over Time</h3>
-                            <div class="chart-container">
-                                <canvas id="diagnoses-chart"></canvas>
-                            </div>
-                        </div>
-                        <div class="theme-card rounded-xl p-6">
-                            <h3 class="font-semibold mb-4" style="color: var(--text-primary);">Diseases by Category</h3>
-                            <div class="chart-container">
-                                <canvas id="categories-chart"></canvas>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-                        <div class="theme-card rounded-xl p-6">
-                            <h3 class="font-semibold mb-4" style="color: var(--text-primary);">Severity Distribution</h3>
-                            <div class="chart-container">
-                                <canvas id="severity-chart"></canvas>
-                            </div>
-                        </div>
-                        <div class="theme-card rounded-xl p-6">
-                            <h3 class="font-semibold mb-4" style="color: var(--text-primary);">Treatment Success Rate</h3>
-                            <div class="chart-container">
-                                <canvas id="success-chart"></canvas>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="theme-card rounded-xl p-6">
-                        <h3 class="font-semibold mb-4" style="color: var(--text-primary);">Most Common Issues</h3>
-                        <div id="top-diseases-list" class="space-y-3">
-                            </div>
-                    </div>
-                </div>
-            </div>
-        </section>
-        
-    </main>
-    
-    <div id="toast-container" class="fixed bottom-20 right-4 z-50 space-y-2"></div>
-    
+        </div>
+    </div>
+
     <script src="app.js"></script>
 </body>
+
 </html>

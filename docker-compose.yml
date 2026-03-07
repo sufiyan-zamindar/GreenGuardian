@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    container_name: greenguardian-db
+    environment:
+      POSTGRES_DB: greenguardian
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/schema:/docker-entrypoint-initdb.d/01-schema
+      - ./database/seeds:/docker-entrypoint-initdb.d/02-seeds
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - greenguardian-network
+
+  # Backend FastAPI Service
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+    container_name: greenguardian-backend
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: greenguardian
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      PYTHONUNBUFFERED: 1
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./Backend:/app/Backend
+      - ./ai_model:/app/ai_model
+    networks:
+      - greenguardian-network
+    command: uvicorn Backend.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # Frontend Nginx Service
+  frontend:
+    image: nginx:latest
+    container_name: greenguardian-frontend
+    ports:
+      - "80:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - backend
+    networks:
+      - greenguardian-network
+
+volumes:
+  postgres_data:
+
+networks:
+  greenguardian-network:
+    driver: bridge

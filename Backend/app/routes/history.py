@@ -1,37 +1,34 @@
 # Backend/app/routes/history.py
 
-from fastapi import APIRouter
-from app.database.db import get_db_connection
+from fastapi import APIRouter, Query
+from app.services.history_service import get_diagnosis_history
 
 router = APIRouter()
 
 @router.get("/history")
-
-def get_history():
-
-    conn = get_db_connection()
-    cur = conn.cursor()
-
-    cur.execute(
-        """
-        SELECT d.disease_name, confidence_score, prediction_time
-        FROM diagnoses dg
-        JOIN diseases d ON d.id = dg.disease_id
-        ORDER BY prediction_time DESC
-        LIMIT 10
-        """
-    )
-
-    rows = cur.fetchall()
-
-    cur.close()
-    conn.close()
-
-    return [
-        {
-            "disease": r[0],
-            "confidence": r[1],
-            "time": r[2]
+async def get_history(user_id: int = Query(None), limit: int = Query(10, le=100)):
+    """
+    Retrieve diagnosis history
+    
+    Parameters:
+        - user_id: Filter by user (optional)
+        - limit: Maximum number of records (default: 10, max: 100)
+    
+    Returns:
+        List of diagnoses with disease, confidence, and timestamp
+    """
+    try:
+        diagnoses = get_diagnosis_history(user_id=user_id, limit=limit)
+        
+        return {
+            "success": True,
+            "count": len(diagnoses),
+            "diagnoses": diagnoses
         }
-        for r in rows
-    ]
+    
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+            "diagnoses": []
+        }
