@@ -1,5 +1,5 @@
 // GreenGuardian Service Worker
-const CACHE_NAME = 'greenguardian-v2';
+const CACHE_NAME = 'greenguardian-v3';
 const STATIC_ASSETS = [
     '/',
     '/index.html',
@@ -11,12 +11,14 @@ self.addEventListener('install', (event) => {
     event.waitUntil(
         caches.open(CACHE_NAME)
             .then((cache) => {
-                // Try to cache all assets, but don't fail if some are unavailable
                 return Promise.allSettled(
-                    STATIC_ASSETS.map(asset => 
-                        fetch(asset).then(response => {
-                            if (response.ok) return cache.put(asset, response);
-                        }).catch(() => {})
+                    STATIC_ASSETS.map((asset) =>
+                        fetch(asset)
+                            .then((response) => {
+                                if (response.ok) return cache.put(asset, response);
+                                return null;
+                            })
+                            .catch(() => null)
                     )
                 );
             })
@@ -27,36 +29,52 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
     event.waitUntil(
         caches.keys()
-            .then((cacheNames) => {
-                return Promise.all(
-                    cacheNames.map((cacheName) => {
-                        if (cacheName !== CACHE_NAME) {
-                            return caches.delete(cacheName);
-                        }
-                    })
-                );
-            })
+            .then((cacheNames) => Promise.all(
+                cacheNames
+                    .filter((name) => name !== CACHE_NAME)
+                    .map((name) => caches.delete(name))
+            ))
             .then(() => self.clients.claim())
     );
 });
 
 self.addEventListener('fetch', (event) => {
     const { request } = event;
-    
+
     if (request.method !== 'GET') return;
-    
+
+    const url = new URL(request.url);
+
+    // Never cache API calls.
+    if (url.pathname.startsWith('/api/')) {
+        return;
+    }
+
+    // For app shell files, use network-first to avoid stale frontend logic.
+    const isAppShell = url.pathname === '/' || url.pathname.endsWith('/index.html') || url.pathname.endsWith('/app.js');
+
+    if (isAppShell) {
+        event.respondWith(
+            fetch(request)
+                .then((networkResponse) => {
+                    if (networkResponse && networkResponse.ok) {
+                        const copy = networkResponse.clone();
+                        caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+                    }
+                    return networkResponse;
+                })
+                .catch(() => caches.match(request))
+        );
+        return;
+    }
+
+    // For other static assets, cache-first.
     event.respondWith(
         caches.match(request)
-            .then((cachedResponse) => {
-                if (cachedResponse) {
-                    return cachedResponse;
-                }
-                return fetch(request);
-            })
+            .then((cached) => cached || fetch(request))
     );
 });
 
-// Push notifications
 self.addEventListener('push', (event) => {
     if (event.data) {
         const data = event.data.json();
@@ -70,10 +88,8 @@ self.addEventListener('push', (event) => {
                 { action: 'dismiss', title: 'Dismiss' }
             ]
         };
-        
-        event.waitUntil(
-            self.registration.showNotification(data.title, options)
-        );
+
+        event.waitUntil(self.registration.showNotification(data.title, options));
     }
 });
 

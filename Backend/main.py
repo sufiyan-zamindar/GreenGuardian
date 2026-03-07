@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routes import diagnosis, history
-from app.database.db import close_db_pool
+from app.database.db import close_db_pool, get_db_status
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -32,10 +32,12 @@ app.add_middleware(
 # Health check endpoint
 @app.get("/")
 def health_check():
+    db_status = get_db_status()
     return {
         "status": "running",
         "service": "GreenGuardian API",
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "database": db_status,
     }
 
 # Include routers
