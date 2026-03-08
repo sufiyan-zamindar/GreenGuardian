@@ -34,6 +34,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
 
     <link rel="manifest" href="manifest.json">
 
@@ -466,9 +467,9 @@
                                     with</span></div>
                         </div>
 
-                        <div class="grid grid-cols-2 gap-3">
-                            <button type="button"
-                                class="flex items-center justify-center gap-2 px-4 py-2.5 border rounded-xl hover:opacity-80 transition-colors"
+                        <div class="grid grid-cols-1 gap-3">
+                            <button type="button" id="login-google-btn"
+                                class="w-full flex items-center justify-center gap-2 px-4 py-2.5 border rounded-xl hover:opacity-80 transition-colors"
                                 style="border-color: var(--border-color);">
                                 <svg class="w-5 h-5" viewBox="0 0 24 24">
                                     <path fill="#4285F4"
@@ -482,8 +483,8 @@
                                 </svg>
                                 <span class="text-sm font-medium" style="color: var(--text-primary);">Google</span>
                             </button>
-                            <button type="button"
-                                class="flex items-center justify-center gap-2 px-4 py-2.5 border rounded-xl hover:opacity-80 transition-colors"
+                            <button type="button" id="login-apple-btn" aria-hidden="true"
+                                class="w-full flex items-center justify-center gap-2 px-4 py-2.5 border rounded-xl hover:opacity-80 transition-colors"
                                 style="border-color: var(--border-color);">
                                 <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"
                                     style="color: var(--text-primary);">
@@ -496,7 +497,7 @@
                     </div>
 
                     <p class="text-center mt-6" style="color: var(--text-secondary);">Don't have an account? <button
-                            type="button" id="go-to-signup" onclick="showScreen('signup-screen')"
+                            type="button" id="go-to-signup"
                             class="text-primary-600 hover:text-primary-700 font-semibold">Sign up</button></p>
                 </div>
             </div>
@@ -1982,3 +1983,4 @@
 </body>
 
 </html>
+

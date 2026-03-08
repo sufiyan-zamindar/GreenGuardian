@@ -1,14 +1,17 @@
 const API_BASE_CANDIDATES = (() => {
     const host = window.location.hostname || "localhost";
-    const values = [
-        `${window.location.origin}/api`,
-        `http://${host}:8000/api`,
-        "http://localhost:8000/api"
-    ];
+    const onBackendPort = window.location.port === "8000";
+    const originApi = window.location.origin.replace(/\/+$/, "") + "/api";
+    const hostApi = "http://" + host + ":8000/api";
+
+    const values = onBackendPort
+        ? [originApi, hostApi, "http://localhost:8000/api"]
+        : [hostApi, "http://localhost:8000/api", originApi];
+
     return [...new Set(values.map((v) => v.replace(/\/+$/, "")))];
 })();
 
-const ENDPOINTS = { diagnose: "/diagnose", history: "/history" };
+const ENDPOINTS = { diagnose: "/diagnose", history: "/history", googleConfig: "/auth/google/config", googleAuth: "/auth/google" };
 
 const AppState = {
     currentScreen: "signup-screen",
@@ -18,9 +21,11 @@ const AppState = {
     filteredHistory: [],
     theme: localStorage.getItem("greenguardian-theme") || "light",
     user: {
+        id: Number(localStorage.getItem("user-id") || 0) || null,
         email: localStorage.getItem("user-email") || "",
         name: localStorage.getItem("user-name") || "Plant User",
-        plan: localStorage.getItem("user-plan") || "Free"
+        plan: localStorage.getItem("user-plan") || "Free",
+        provider: localStorage.getItem("user-provider") || "local"
     },
     cameraStream: null,
     currentHistoryDetail: null,
@@ -28,6 +33,9 @@ const AppState = {
 };
 
 AppState.accentColor = localStorage.getItem("greenguardian-accent") || "green";
+let googleAuthInitialized = false;
+let googleClientId = "";
+let googleTokenClient = null;
 
 const LOCAL_TIPS = [
     { title: "Water at the Base", content: "Avoid wet leaves to reduce fungal growth.", category: "prevention" },
@@ -42,6 +50,7 @@ const LOCAL_DISEASE_LIBRARY = [
 ];
 
 const qs = (id) => document.getElementById(id);
+const GLOBAL_HISTORY_KEY = "gg-history-global";
 function normalizeEmail(email) {
     return String(email || "").trim().toLowerCase();
 }
@@ -61,9 +70,41 @@ function readAccountHistory(email = AppState.user.email) {
     }
 }
 
-function saveAccountHistory(list, email = AppState.user.email) {
+function readGlobalHistory() {
     try {
-        localStorage.setItem(getAccountHistoryKey(email), JSON.stringify(Array.isArray(list) ? list : []));
+        const raw = localStorage.getItem(GLOBAL_HISTORY_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+}
+
+function historyIdentity(item) {
+    if (!item || typeof item !== "object") return "";
+    const idPart = item.id !== undefined && item.id !== null ? String(item.id) : "";
+    const disease = String(item.disease || "Unknown").trim() || "Unknown";
+    const createdAt = String(item.created_at || "").trim();
+    const conf = Number(item.confidence || 0).toFixed(6);
+    return [idPart, disease, createdAt, conf].join("|");
+}
+
+function mergeHistories(...lists) {
+    const flat = lists.flat().filter(Boolean);
+    const map = new Map();
+    flat.forEach((item) => {
+        const key = historyIdentity(item);
+        if (!key) return;
+        map.set(key, item);
+    });
+    return Array.from(map.values()).sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+}
+
+function saveAccountHistory(list, email = AppState.user.email) {
+    const safeList = Array.isArray(list) ? list : [];
+    try {
+        localStorage.setItem(getAccountHistoryKey(email), JSON.stringify(safeList));
+        localStorage.setItem(GLOBAL_HISTORY_KEY, JSON.stringify(mergeHistories(readGlobalHistory(), safeList)));
     } catch {}
 }
 
@@ -134,6 +175,9 @@ class APIService {
     static async diagnose(file) {
         const fd = new FormData();
         fd.append("file", file);
+        if (AppState.user.id) {
+            fd.append("user_id", String(AppState.user.id));
+        }
         const d = await this.fetchWithFallback(ENDPOINTS.diagnose, { method: "POST", body: fd });
         return {
             disease: safeText(d.disease),
@@ -151,7 +195,11 @@ class APIService {
     }
 
     static async history() {
-        const d = await this.fetchWithFallback(`${ENDPOINTS.history}?limit=100`);
+        const params = new URLSearchParams({ limit: "100" });
+        if (AppState.user.id) {
+            params.set("user_id", String(AppState.user.id));
+        }
+        const d = await this.fetchWithFallback(`${ENDPOINTS.history}?${params.toString()}`);
         return (d.diagnoses || []).map((x) => ({
             id: x.id,
             disease: safeText(x.disease),
@@ -160,6 +208,19 @@ class APIService {
             severity: normalizeSeverity(x.severity),
             status: x.status || "in_progress"
         }));
+    }
+
+
+    static async getGoogleConfig() {
+        return this.fetchWithFallback(ENDPOINTS.googleConfig, { method: "GET" });
+    }
+
+    static async googleAuth(credential) {
+        return this.fetchWithFallback(ENDPOINTS.googleAuth, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ access_token: credential })
+        });
     }
 
     static async clearHistory() {
@@ -183,9 +244,14 @@ class UIRenderer {
         AppState.currentScreen = id;
 
         const header = qs("app-header");
+        const sidebar = qs("desktop-sidebar");
         const authScreens = new Set(["login-screen", "signup-screen", "forgot-screen"]);
+        const isAuthScreen = authScreens.has(id);
         if (header) {
-            header.classList.toggle("hidden", authScreens.has(id));
+            header.classList.toggle("hidden", isAuthScreen);
+        }
+        if (sidebar) {
+            sidebar.style.display = isAuthScreen ? "none" : "";
         }
 
         const headerTitle = qs("header-title");
@@ -478,12 +544,13 @@ function saveHistoryStatus(id) {
 }
 
 async function loadHistory() {
-    const localHistory = readAccountHistory();
+    const accountHistory = readAccountHistory();
+    const globalHistory = readGlobalHistory();
 
-    // Prefer per-account local history. If empty, attempt one-time backend bootstrap.
-    if (localHistory.length) {
-        AppState.diagnosisHistory = localHistory;
+    if (accountHistory.length || globalHistory.length) {
+        AppState.diagnosisHistory = mergeHistories(accountHistory, globalHistory);
         AppState.filteredHistory = [...AppState.diagnosisHistory];
+        saveAccountHistory(AppState.diagnosisHistory);
         renderRecent();
         renderHistory();
         updateProfileStats();
@@ -492,7 +559,7 @@ async function loadHistory() {
 
     try {
         const remoteHistory = await APIService.history();
-        AppState.diagnosisHistory = remoteHistory;
+        AppState.diagnosisHistory = mergeHistories(remoteHistory);
         AppState.filteredHistory = [...AppState.diagnosisHistory];
         saveAccountHistory(AppState.diagnosisHistory);
         renderRecent();
@@ -694,6 +761,109 @@ async function doAnalyze() {
         showToast("Diagnosis failed. Check backend connection.", "error");
     }
 }
+
+async function initGoogleAuth() {
+    if (googleAuthInitialized && googleTokenClient) return true;
+
+    if (!window.google || !window.google.accounts || !window.google.accounts.oauth2) {
+        showToast("Google sign-in script not loaded", "error");
+        return false;
+    }
+
+    try {
+        const cfg = await APIService.getGoogleConfig();
+        if (!cfg?.configured || !cfg?.client_id) {
+            showToast("Google sign-in is not configured in backend", "warning");
+            return false;
+        }
+
+        googleClientId = cfg.client_id;
+        googleTokenClient = window.google.accounts.oauth2.initTokenClient({
+            client_id: googleClientId,
+            scope: "openid email profile",
+            callback: handleGoogleTokenResponse,
+            error_callback: () => showToast("Google sign-in failed", "error")
+        });
+
+        googleAuthInitialized = true;
+        return true;
+    } catch (e) {
+        console.error(e);
+        showToast("Failed to initialize Google sign-in", "error");
+        return false;
+    }
+}
+
+async function handleGoogleTokenResponse(response) {
+    try {
+        const accessToken = response?.access_token;
+        if (!accessToken) {
+            showToast("Google sign-in was cancelled", "warning");
+            return;
+        }
+
+        const data = await APIService.googleAuth(accessToken);
+        const user = data?.user || {};
+
+        const previousHistory = mergeHistories(AppState.diagnosisHistory, readGlobalHistory(), readAccountHistory());
+
+        AppState.user.id = Number(user.id || 0) || null;
+        AppState.user.email = safeText(user.email, "");
+        AppState.user.name = safeText(user.name, "Google User");
+        AppState.user.provider = "google";
+
+        localStorage.setItem("user-id", String(AppState.user.id || ""));
+        localStorage.setItem("user-email", AppState.user.email);
+        localStorage.setItem("user-name", AppState.user.name);
+        localStorage.setItem("user-provider", "google");
+        localStorage.setItem("user-logged-in", "true");
+
+        if (previousHistory.length) {
+            saveAccountHistory(previousHistory, AppState.user.email);
+        }
+
+        setUserUI();
+        showScreen("dashboard-screen");
+        showToast("Google sign-in successful", "success");
+
+        await loadHistory();
+        updateAnalytics();
+    } catch (e) {
+        console.error(e);
+        showToast(e?.message || "Google sign-in failed", "error");
+    }
+}
+
+async function socialSignIn(provider) {
+    const normalized = String(provider || "Google").toLowerCase();
+    if (normalized !== "google") {
+        showToast("This provider is not available", "warning");
+        return;
+    }
+
+    const ok = await initGoogleAuth();
+    if (!ok || !googleTokenClient) return;
+
+    googleTokenClient.requestAccessToken({ prompt: "consent" });
+}
+globalThis.socialSignIn = socialSignIn;
+
+function wireGlobalDelegates() {
+    document.addEventListener("click", (e) => {
+        const googleBtn = e.target?.closest?.("#login-google-btn");
+        if (googleBtn) {
+            e.preventDefault();
+            socialSignIn("Google");
+            return;
+        }
+        const appleBtn = e.target?.closest?.("#login-apple-btn");
+        if (appleBtn) {
+            e.preventDefault();
+            socialSignIn("Apple");
+        }
+    });
+}
+
 function showUploadTab(upload) {
     const up = qs("tab-upload");
     const cam = qs("tab-camera");
@@ -792,6 +962,15 @@ function wireEvents() {
     qs("camera-btn")?.addEventListener("click", () => { showUploadTab(false); startCamera(); });
     qs("start-camera-btn")?.addEventListener("click", startCamera);
     qs("capture-btn")?.addEventListener("click", captureCamera);
+    const googleBtn = qs("login-google-btn");
+    const appleBtn = qs("login-apple-btn");
+    if (googleBtn) {
+        googleBtn.addEventListener("click", (e) => { e.preventDefault(); socialSignIn("Google"); });
+    }
+    if (appleBtn) {
+        appleBtn.classList.add("hidden");
+        appleBtn.setAttribute("aria-hidden", "true");
+    }
 
     qs("login-form")?.addEventListener("submit", async (e) => {
         e.preventDefault();
@@ -802,10 +981,14 @@ function wireEvents() {
             return;
         }
 
+        AppState.user.id = null;
         AppState.user.email = email;
         AppState.user.name = email.split("@")[0];
+        AppState.user.provider = "local";
+        localStorage.removeItem("user-id");
         localStorage.setItem("user-email", AppState.user.email);
         localStorage.setItem("user-name", AppState.user.name);
+        localStorage.setItem("user-provider", "local");
         localStorage.setItem("user-logged-in", "true");
         setUserUI();
         await loadHistory();
@@ -822,10 +1005,14 @@ function wireEvents() {
             showToast("Passwords do not match", "warning");
             return;
         }
+        AppState.user.id = null;
         AppState.user.email = email;
         AppState.user.name = email.split("@")[0];
+        AppState.user.provider = "local";
+        localStorage.removeItem("user-id");
         localStorage.setItem("user-email", AppState.user.email);
         localStorage.setItem("user-name", AppState.user.name);
+        localStorage.setItem("user-provider", "local");
         localStorage.setItem("user-logged-in", "false");
         const loginEmail = qs("login-email");
         if (loginEmail) loginEmail.value = email;
@@ -892,6 +1079,7 @@ async function clearHistory() {
     AppState.diagnosisHistory = [];
     AppState.filteredHistory = [];
     saveAccountHistory([]);
+    try { localStorage.setItem(GLOBAL_HISTORY_KEY, JSON.stringify([])); } catch {}
     renderHistory();
     renderRecent();
     updateAnalytics();
@@ -919,11 +1107,13 @@ function downloadUserData() {
 
 function deleteAccount() {
     if (!confirm("Delete local account data on this device?")) return;
+    localStorage.removeItem("user-id");
     localStorage.removeItem("user-email");
     localStorage.removeItem("user-name");
+    localStorage.removeItem("user-provider");
     localStorage.removeItem("user-logged-in");
     localStorage.removeItem(getAccountHistoryKey());
-    AppState.user = { email: "", name: "Plant User", plan: "Free" };
+    AppState.user = { id: null, email: "", name: "Plant User", plan: "Free", provider: "local" };
     showToast("Local account data removed", "success");
     showScreen("signup-screen");
 }
@@ -957,6 +1147,7 @@ function init() {
     applyTheme();
     applyAccentPalette(AppState.accentColor);
     setUserUI();
+    wireGlobalDelegates();
     wirePWA();
     wireEvents();
     renderTips();
@@ -1005,6 +1196,7 @@ window.flipImage = flipImage;
 window.updateImageAdjustments = updateImageAdjustments;
 window.applyImageEdits = applyImageEdits;
 window.closeImageEditor = closeImageEditor;
+window.socialSignIn = socialSignIn;
 
 
 
@@ -1259,6 +1451,7 @@ window.closeImageEditor = closeImageEditor;
         bootEnhancements();
     }
 })();
+
 
 
 

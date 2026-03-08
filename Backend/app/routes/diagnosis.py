@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Form
 from PIL import Image, UnidentifiedImageError
 import io
 import traceback
@@ -12,7 +12,7 @@ router = APIRouter()
 
 
 @router.post("/diagnose")
-async def diagnose(file: UploadFile = File(...)):
+async def diagnose(file: UploadFile = File(...), user_id: int | None = Form(None)):
     """
     Diagnose plant disease from uploaded image
 
@@ -53,6 +53,7 @@ async def diagnose(file: UploadFile = File(...)):
             diagnosis_id, save_error = save_prediction(
                 disease_id,
                 confidence,
+                user_id=user_id,
                 image_path=file.filename,
                 return_error=True,
             )
@@ -88,3 +89,5 @@ async def diagnose(file: UploadFile = File(...)):
                 "details": str(e)
             }
         )
+
+
