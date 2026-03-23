@@ -1,5 +1,6 @@
 from app.database.db import get_db_connection, return_db_connection
 from app.services.disease_name_service import find_disease_record
+from app.services.severity_service import resolve_severity
 
 
 def _healthy_fallback():
@@ -29,7 +30,7 @@ def get_treatment(disease_name):
                 "organic_treatment": "Consult agricultural expert",
                 "chemical_treatment": "Use recommended fungicide",
                 "prevention": "Maintain crop hygiene and monitor plant regularly",
-                "severity": "Unknown"
+                "severity": resolve_severity(None, disease_name)
             }
 
         disease_id = disease_record[0]
@@ -55,7 +56,7 @@ def get_treatment(disease_name):
                 "organic_treatment": result[1] or "Consult agricultural expert",
                 "chemical_treatment": result[2] or "Use recommended fungicide",
                 "prevention": result[3] or "Maintain crop hygiene",
-                "severity": result[4] or "Unknown"
+                "severity": resolve_severity(result[4], disease_name)
             }
 
         return {
@@ -63,7 +64,7 @@ def get_treatment(disease_name):
             "organic_treatment": "Consult agricultural expert",
             "chemical_treatment": "Use recommended fungicide",
             "prevention": "Maintain crop hygiene and monitor plant regularly",
-            "severity": "Unknown"
+            "severity": resolve_severity(None, disease_name)
         }
 
     except Exception as e:
@@ -73,8 +74,10 @@ def get_treatment(disease_name):
             "organic_treatment": "Check database connection and retry",
             "chemical_treatment": "Check database connection and retry",
             "prevention": "Ensure PostgreSQL is running and seeded",
-            "severity": "Unknown"
+            "severity": resolve_severity(None, disease_name)
         }
     finally:
         if conn:
             return_db_connection(conn)
+
+

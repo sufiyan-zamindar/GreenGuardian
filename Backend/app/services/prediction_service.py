@@ -3,12 +3,7 @@ import os
 from pathlib import Path
 
 import numpy as np
-import tensorflow as tf
 from PIL import Image
-
-from tensorflow.keras.applications import MobileNetV2
-from tensorflow.keras.layers import Dense, Dropout, GlobalAveragePooling2D
-from tensorflow.keras.models import Model
 
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
 MODEL_PATH = os.path.join(BASE_DIR, "ai_model/models/greenguardian_model.h5")
@@ -23,27 +18,61 @@ with open(LABEL_PATH, "r", encoding="utf-8") as f:
 num_classes = len(class_indices)
 class_names = {v: k for k, v in class_indices.items()}
 
+_tf = None
+_MobileNetV2 = None
+_preprocess_input = None
+_Dense = None
+_Dropout = None
+_GlobalAveragePooling2D = None
+_Model = None
+model = None
+model_source = "not_loaded"
+model_error = None
 
-def _build_architecture() -> Model:
-    base_model = MobileNetV2(weights=None, include_top=False, input_shape=(224, 224, 3))
+
+def _ensure_tensorflow():
+    global _tf, _MobileNetV2, _preprocess_input, _Dense, _Dropout, _GlobalAveragePooling2D, _Model
+    if _tf is not None:
+        return
+
+    import tensorflow as tf
+    from tensorflow.keras.applications import MobileNetV2
+    from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
+    from tensorflow.keras.layers import Dense, Dropout, GlobalAveragePooling2D
+    from tensorflow.keras.models import Model
+
+    _tf = tf
+    _MobileNetV2 = MobileNetV2
+    _preprocess_input = preprocess_input
+    _Dense = Dense
+    _Dropout = Dropout
+    _GlobalAveragePooling2D = GlobalAveragePooling2D
+    _Model = Model
+
+
+def _build_architecture():
+    _ensure_tensorflow()
+    base_model = _MobileNetV2(weights=None, include_top=False, input_shape=(224, 224, 3))
     x = base_model.output
-    x = GlobalAveragePooling2D()(x)
-    x = Dense(256, activation="relu")(x)
-    x = Dropout(0.3)(x)
-    outputs = Dense(num_classes, activation="softmax")(x)
-    return Model(inputs=base_model.input, outputs=outputs)
+    x = _GlobalAveragePooling2D()(x)
+    x = _Dense(256, activation="relu")(x)
+    x = _Dropout(0.3)(x)
+    outputs = _Dense(num_classes, activation="softmax")(x)
+    return _Model(inputs=base_model.input, outputs=outputs)
 
 
 def _try_load_full_model(model_path: str):
+    _ensure_tensorflow()
+
     try:
-        loaded_model = tf.keras.models.load_model(model_path, compile=False, safe_mode=False)
+        loaded_model = _tf.keras.models.load_model(model_path, compile=False, safe_mode=False)
         print("Model loaded using load_model(safe_mode=False)")
         return loaded_model, "full_model_safe_mode_off"
     except Exception as e:
         print(f"Full model load (safe_mode=False) failed: {e}")
 
     try:
-        loaded_model = tf.keras.models.load_model(model_path, compile=False)
+        loaded_model = _tf.keras.models.load_model(model_path, compile=False)
         print("Model loaded using load_model")
         return loaded_model, "full_model"
     except Exception as e:
@@ -71,7 +100,7 @@ def _try_load_weights(model_path: str):
         return None, f"weights_failed: {tolerant_error}"
 
 
-def _load_model() -> tuple[Model | None, str]:
+def _load_model() -> tuple[object | None, str]:
     if not Path(MODEL_PATH).exists():
         return None, f"Model file not found: {MODEL_PATH}"
 
@@ -82,22 +111,37 @@ def _load_model() -> tuple[Model | None, str]:
     return _try_load_weights(MODEL_PATH)
 
 
-model, model_source = _load_model()
-if model is None:
-    print(f"Model initialization failed: {model_source}")
-else:
+def _get_model():
+    global model, model_source, model_error
+
+    if model is not None:
+        return model
+    if model_error is not None:
+        raise RuntimeError(model_error)
+
+    model, model_source = _load_model()
+    if model is None:
+        model_error = f"Model initialization failed: {model_source}"
+        print(model_error)
+        raise RuntimeError(model_error)
+
     print(f"Model ready (source={model_source}, classes={len(class_names)})")
+    return model
 
 
 def predict_disease(image: Image.Image):
-    if model is None:
-        raise RuntimeError("AI model is not loaded. Check backend startup logs.")
+    loaded_model = _get_model()
 
     image = image.resize((224, 224))
-    image_arr = np.array(image, dtype=np.float32) / 255.0
+    image_arr = np.array(image, dtype=np.float32)
     image_arr = np.expand_dims(image_arr, axis=0)
 
-    predictions = model.predict(image_arr, verbose=0)
+    if _preprocess_input is not None:
+        image_arr = _preprocess_input(image_arr)
+    else:
+        image_arr = image_arr / 255.0
+
+    predictions = loaded_model.predict(image_arr, verbose=0)
 
     predicted_index = int(np.argmax(predictions))
     confidence = float(np.max(predictions))

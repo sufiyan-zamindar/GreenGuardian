@@ -1,0 +1,1 @@
+"""GreenGuardian backend application package."""

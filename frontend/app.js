@@ -1,17 +1,32 @@
+// Complete corrected app.js for GreenGuardian
+
 const API_BASE_CANDIDATES = (() => {
     const host = window.location.hostname || "localhost";
     const onBackendPort = window.location.port === "8000";
     const originApi = window.location.origin.replace(/\/+$/, "") + "/api";
-    const hostApi = "http://" + host + ":8000/api";
+    const explicitBackends = [
+        `http://${host}:8000/api`,
+        "http://localhost:8000/api",
+        "http://127.0.0.1:8000/api"
+    ];
 
     const values = onBackendPort
-        ? [originApi, hostApi, "http://localhost:8000/api"]
-        : [hostApi, "http://localhost:8000/api", originApi];
+        ? [originApi, ...explicitBackends]
+        : explicitBackends;
 
     return [...new Set(values.map((v) => v.replace(/\/+$/, "")))];
 })();
 
-const ENDPOINTS = { diagnose: "/diagnose", history: "/history", googleConfig: "/auth/google/config", googleAuth: "/auth/google" };
+const ENDPOINTS = {
+    diagnose: "/diagnose",
+    history: "/history",
+    historySync: "/history/sync",
+    googleConfig: "/auth/google/config",
+    googleAuth: "/auth/google",
+    signup: "/auth/signup",
+    login: "/auth/login",
+    user: "/auth/me"
+};
 
 const AppState = {
     currentScreen: "signup-screen",
@@ -51,6 +66,23 @@ const LOCAL_DISEASE_LIBRARY = [
 
 const qs = (id) => document.getElementById(id);
 const GLOBAL_HISTORY_KEY = "gg-history-global";
+
+function bindPasswordToggle(buttonId, inputId) {
+    const button = qs(buttonId);
+    const input = qs(inputId);
+    if (!button || !input) return;
+
+    button.addEventListener("click", () => {
+        const isHidden = input.type === "password";
+        input.type = isHidden ? "text" : "password";
+        const icon = button.querySelector("i");
+        if (icon) {
+            icon.setAttribute("data-lucide", isHidden ? "eye-off" : "eye");
+        }
+        if (window.lucide?.createIcons) window.lucide.createIcons();
+    });
+}
+
 function normalizeEmail(email) {
     return String(email || "").trim().toLowerCase();
 }
@@ -71,13 +103,7 @@ function readAccountHistory(email = AppState.user.email) {
 }
 
 function readGlobalHistory() {
-    try {
-        const raw = localStorage.getItem(GLOBAL_HISTORY_KEY);
-        const parsed = raw ? JSON.parse(raw) : [];
-        return Array.isArray(parsed) ? parsed : [];
-    } catch {
-        return [];
-    }
+    return [];
 }
 
 function historyIdentity(item) {
@@ -104,8 +130,7 @@ function saveAccountHistory(list, email = AppState.user.email) {
     const safeList = Array.isArray(list) ? list : [];
     try {
         localStorage.setItem(getAccountHistoryKey(email), JSON.stringify(safeList));
-        localStorage.setItem(GLOBAL_HISTORY_KEY, JSON.stringify(mergeHistories(readGlobalHistory(), safeList)));
-    } catch {}
+    } catch { }
 }
 
 function safeText(v, fallback = "N/A") {
@@ -151,7 +176,6 @@ function placeDiagnosisAboveRecent() {
     recentBlock.parentElement.insertBefore(diagnosis, recentBlock);
 }
 
-
 class APIService {
     static async fetchWithFallback(endpoint, options = {}) {
         let lastErr = null;
@@ -172,6 +196,28 @@ class APIService {
         throw lastErr || new Error("Unable to connect to backend API");
     }
 
+    static async signup(userData) {
+        return this.fetchWithFallback(ENDPOINTS.signup, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(userData)
+        });
+    }
+
+    static async login(credentials) {
+        return this.fetchWithFallback(ENDPOINTS.login, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(credentials)
+        });
+    }
+
+    static async getUser(userId) {
+        return this.fetchWithFallback(`${ENDPOINTS.user}/${userId}`, {
+            method: "GET"
+        });
+    }
+
     static async diagnose(file) {
         const fd = new FormData();
         fd.append("file", file);
@@ -184,6 +230,9 @@ class APIService {
             disease_id: safeText(d.disease_id, "unknown"),
             confidence: Number(d.confidence || 0),
             confidence_percentage: Number(d.confidence_percentage || Math.round((d.confidence || 0) * 100)),
+            diagnosis_id: d.diagnosis_id ?? null,
+            history_saved: Boolean(d.history_saved),
+            history_save_error: d.history_save_error || "",
             treatment: {
                 symptoms: safeText(d.treatment?.symptoms),
                 organic_treatment: safeText(d.treatment?.organic_treatment),
@@ -198,6 +247,9 @@ class APIService {
         const params = new URLSearchParams({ limit: "100" });
         if (AppState.user.id) {
             params.set("user_id", String(AppState.user.id));
+        } else {
+            // If no user ID, return empty array instead of all users' data
+            return { diagnoses: [] };
         }
         const d = await this.fetchWithFallback(`${ENDPOINTS.history}?${params.toString()}`);
         return (d.diagnoses || []).map((x) => ({
@@ -211,6 +263,17 @@ class APIService {
     }
 
 
+    static async syncHistory(rows) {
+        if (!AppState.user.id || !Array.isArray(rows) || !rows.length) {
+            return { success: true, inserted: 0 };
+        }
+        const params = new URLSearchParams({ user_id: String(AppState.user.id) });
+        return this.fetchWithFallback(`${ENDPOINTS.historySync}?${params.toString()}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(rows)
+        });
+    }
     static async getGoogleConfig() {
         return this.fetchWithFallback(ENDPOINTS.googleConfig, { method: "GET" });
     }
@@ -224,7 +287,11 @@ class APIService {
     }
 
     static async clearHistory() {
-        return this.fetchWithFallback(ENDPOINTS.history, { method: "DELETE" });
+        if (!AppState.user.id) {
+            return { success: true, deleted: 0 };
+        }
+        const params = new URLSearchParams({ user_id: String(AppState.user.id) });
+        return this.fetchWithFallback(`${ENDPOINTS.history}?${params.toString()}`, { method: "DELETE" });
     }
 }
 
@@ -242,6 +309,7 @@ class UIRenderer {
         screen.style.display = "flex";
         screen.classList.add("active");
         AppState.currentScreen = id;
+        closeUserMenu();
 
         const header = qs("app-header");
         const sidebar = qs("desktop-sidebar");
@@ -259,7 +327,6 @@ class UIRenderer {
             const title = id.replace("-screen", "").replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
             headerTitle.textContent = title || "Dashboard";
         }
-
 
         document.querySelectorAll(".sidebar-item").forEach((b) => {
             const onclick = b.getAttribute("onclick") || "";
@@ -308,6 +375,12 @@ class UIRenderer {
                     <div class="theme-card rounded-xl p-3"><p class="text-xs font-semibold uppercase tracking-wide mb-1 text-primary-600">Chemical Treatment</p><p class="text-sm" style="color: var(--text-primary);">${safeText(result.treatment?.chemical_treatment)}</p></div>
                     <div class="theme-card rounded-xl p-3"><p class="text-xs font-semibold uppercase tracking-wide mb-1 text-primary-600">Prevention</p><p class="text-sm" style="color: var(--text-primary);">${safeText(result.treatment?.prevention)}</p></div>
                 </div>
+                <div class="mt-5 flex flex-col sm:flex-row gap-3">
+                    <button type="button" onclick="downloadCurrentDiagnosisReport()"
+                        class="btn-primary bg-primary-500 text-white font-semibold py-3 px-5 rounded-xl hover:bg-primary-600 flex items-center justify-center gap-2">
+                        <i data-lucide="file-text" class="w-4 h-4"></i><span>Download This Report</span>
+                    </button>
+                </div>
             </div>`;
 
         this.showScreen("dashboard-screen");
@@ -315,6 +388,7 @@ class UIRenderer {
         c.scrollIntoView({ behavior: "smooth", block: "start" });
     }
 }
+
 function applyTheme() {
     const dark = AppState.theme === "dark";
     document.documentElement.classList.toggle("dark", dark);
@@ -356,6 +430,7 @@ function applyAccentPalette(color) {
     const selected = document.querySelector('[onclick="setAccentColor(' + "'" + color + "'" + ')"]');
     selected?.classList.add("ring-2", "ring-offset-2");
 }
+
 function setUserUI() {
     const email = AppState.user.email || "user@example.com";
     const name = AppState.user.name || email.split("@")[0];
@@ -391,6 +466,7 @@ function setUserUI() {
         }
     }
 }
+
 function showToast(message, type = "info") {
     const c = qs("toast-container");
     if (!c) return;
@@ -400,6 +476,16 @@ function showToast(message, type = "info") {
     el.textContent = message;
     c.appendChild(el);
     setTimeout(() => el.remove(), 3200);
+}
+
+function toggleUserMenu(event) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    qs("header-user-menu")?.classList.toggle("hidden");
+}
+
+function closeUserMenu() {
+    qs("header-user-menu")?.classList.add("hidden");
 }
 
 function clearUploadPreview() {
@@ -545,35 +631,31 @@ function saveHistoryStatus(id) {
 
 async function loadHistory() {
     const accountHistory = readAccountHistory();
-    const globalHistory = readGlobalHistory();
 
-    if (accountHistory.length || globalHistory.length) {
-        AppState.diagnosisHistory = mergeHistories(accountHistory, globalHistory);
+    if (AppState.user.id) {
+        try {
+            if (accountHistory.length) {
+                await APIService.syncHistory(accountHistory);
+            }
+            const remoteHistory = await APIService.history();
+            AppState.diagnosisHistory = mergeHistories(remoteHistory);
+            AppState.filteredHistory = [...AppState.diagnosisHistory];
+            saveAccountHistory(AppState.diagnosisHistory);
+        } catch (e) {
+            console.error("Error loading history from backend:", e);
+            AppState.diagnosisHistory = mergeHistories(accountHistory);
+            AppState.filteredHistory = [...AppState.diagnosisHistory];
+        }
+    } else {
+        AppState.diagnosisHistory = mergeHistories(accountHistory);
         AppState.filteredHistory = [...AppState.diagnosisHistory];
-        saveAccountHistory(AppState.diagnosisHistory);
-        renderRecent();
-        renderHistory();
-        updateProfileStats();
-        return;
     }
 
-    try {
-        const remoteHistory = await APIService.history();
-        AppState.diagnosisHistory = mergeHistories(remoteHistory);
-        AppState.filteredHistory = [...AppState.diagnosisHistory];
-        saveAccountHistory(AppState.diagnosisHistory);
-        renderRecent();
-        renderHistory();
-        updateProfileStats();
-    } catch (e) {
-        console.error(e);
-        AppState.diagnosisHistory = [];
-        AppState.filteredHistory = [];
-        renderRecent();
-        renderHistory();
-        updateProfileStats();
-    }
+    renderRecent();
+    renderHistory();
+    updateProfileStats();
 }
+
 function renderEncyclopedia(category = "all", query = "") {
     const grid = qs("encyclopedia-grid");
     if (!grid) return;
@@ -657,7 +739,23 @@ function makeChart(id, cfg) {
     if (AppState.analyticsCharts[id]) AppState.analyticsCharts[id].destroy();
     const canvas = qs(id);
     if (!canvas) return;
-    AppState.analyticsCharts[id] = new Chart(canvas, cfg);
+
+    const nextCfg = structuredClone(cfg);
+    const datasets = nextCfg?.data?.datasets || [];
+    const values = datasets.flatMap((dataset) => Array.isArray(dataset.data) ? dataset.data : []);
+    const hasNumbers = values.some((value) => Number(value) > 0);
+
+    if (!hasNumbers) {
+        if (nextCfg.type === "doughnut" || nextCfg.type === "pie") {
+            nextCfg.data.labels = ["No data"];
+            nextCfg.data.datasets = [{ data: [1], backgroundColor: ["#d1d5db"], borderWidth: 0 }];
+        } else {
+            nextCfg.data.labels = ["No data"];
+            nextCfg.data.datasets = datasets.map((dataset) => ({ ...dataset, data: [0] }));
+        }
+    }
+
+    AppState.analyticsCharts[id] = new Chart(canvas, nextCfg);
 }
 
 function updateAnalytics() {
@@ -721,7 +819,7 @@ function upsertLocalDiagnosis(result) {
     const now = new Date();
     const confidence = Number(result?.confidence || (Number(result?.confidence_percentage || 0) / 100) || 0);
     const candidate = {
-        id: -1 * Date.now(),
+        id: Number(result?.diagnosis_id) || -1 * Date.now(),
         disease: safeText(result?.disease, "Unknown"),
         confidence,
         created_at: now.toISOString(),
@@ -729,13 +827,14 @@ function upsertLocalDiagnosis(result) {
         status: "in_progress"
     };
 
-    AppState.diagnosisHistory = [candidate, ...AppState.diagnosisHistory];
+    AppState.diagnosisHistory = mergeHistories([candidate], AppState.diagnosisHistory);
     if (AppState.diagnosisHistory.length > 200) {
         AppState.diagnosisHistory = AppState.diagnosisHistory.slice(0, 200);
     }
 
     AppState.filteredHistory = [...AppState.diagnosisHistory];
 }
+
 async function doAnalyze() {
     if (!AppState.uploadedImage) {
         showToast("Please upload an image first", "warning");
@@ -747,21 +846,27 @@ async function doAnalyze() {
         const result = await APIService.diagnose(AppState.uploadedImage);
         AppState.diagnosisResult = result;
         await loadHistory();
-        upsertLocalDiagnosis(result);
-        saveAccountHistory(AppState.diagnosisHistory);
+
+        if (!result.history_saved) {
+            upsertLocalDiagnosis(result);
+            saveAccountHistory(AppState.diagnosisHistory);
+            if (result.history_save_error) {
+                console.warn("Diagnosis history was not persisted:", result.history_save_error);
+            }
+        }
+
         renderRecent();
         renderHistory();
         updateAnalytics();
         updateProfileStats();
         UIRenderer.renderDiagnosis(result);
-        showToast("Diagnosis completed", "success");
+        showToast(result.history_saved ? "Diagnosis completed" : "Diagnosis completed locally", "success");
     } catch (e) {
         console.error(e);
         UIRenderer.showError(e.message || "Failed to analyze image");
         showToast("Diagnosis failed. Check backend connection.", "error");
     }
 }
-
 async function initGoogleAuth() {
     if (googleAuthInitialized && googleTokenClient) return true;
 
@@ -805,7 +910,7 @@ async function handleGoogleTokenResponse(response) {
         const data = await APIService.googleAuth(accessToken);
         const user = data?.user || {};
 
-        const previousHistory = mergeHistories(AppState.diagnosisHistory, readGlobalHistory(), readAccountHistory());
+        const previousHistory = mergeHistories(AppState.diagnosisHistory, readAccountHistory());
 
         AppState.user.id = Number(user.id || 0) || null;
         AppState.user.email = safeText(user.email, "");
@@ -846,10 +951,17 @@ async function socialSignIn(provider) {
 
     googleTokenClient.requestAccessToken({ prompt: "consent" });
 }
+
 globalThis.socialSignIn = socialSignIn;
 
 function wireGlobalDelegates() {
     document.addEventListener("click", (e) => {
+        const menuRoot = qs("header-user-menu");
+        const menuButton = qs("header-user-menu-button");
+        if (menuRoot && menuButton && !menuRoot.contains(e.target) && !menuButton.contains(e.target)) {
+            closeUserMenu();
+        }
+
         const googleBtn = e.target?.closest?.("#login-google-btn");
         if (googleBtn) {
             e.preventDefault();
@@ -927,6 +1039,72 @@ function captureCamera() {
         stopCamera();
     }, "image/jpeg", 0.95);
 }
+
+async function handleSignup(email, password, name) {
+    try {
+        const userData = {
+            username: email.split('@')[0],
+            email: email,
+            password: password,
+            full_name: name
+        };
+
+        await APIService.signup(userData);
+
+        localStorage.removeItem("user-id");
+        localStorage.removeItem("user-provider");
+        localStorage.setItem("user-email", email);
+        localStorage.setItem("user-name", name);
+        localStorage.setItem("user-logged-in", "false");
+
+        AppState.user.id = null;
+        AppState.user.email = email;
+        AppState.user.name = name;
+        AppState.user.provider = "local";
+        setUserUI();
+
+        if (qs("login-email")) qs("login-email").value = email;
+        if (qs("login-password")) qs("login-password").value = "";
+
+        showScreen("login-screen");
+        showToast("Account created successfully! Please sign in.", "success");
+        return true;
+    } catch (error) {
+        console.error("Signup error:", error);
+        showToast(error.message || "Signup failed", "error");
+        return false;
+    }
+}
+
+async function handleLogin(email, password) {
+    try {
+        const result = await APIService.login({ email, password });
+
+        if (result.success && result.user) {
+            AppState.user.id = result.user.id;
+            AppState.user.email = result.user.email;
+            AppState.user.name = result.user.full_name || result.user.username;
+            AppState.user.provider = "local";
+
+            localStorage.setItem("user-id", String(result.user.id));
+            localStorage.setItem("user-email", result.user.email);
+            localStorage.setItem("user-name", AppState.user.name);
+            localStorage.setItem("user-provider", "local");
+            localStorage.setItem("user-logged-in", "true");
+
+            setUserUI();
+            await loadHistory();
+            showScreen("dashboard-screen");
+            showToast("Login successful!", "success");
+            return true;
+        }
+    } catch (error) {
+        console.error("Login error:", error);
+        showToast(error.message || "Login failed", "error");
+        return false;
+    }
+}
+
 function wireEvents() {
     qs("theme-toggle")?.addEventListener("click", toggleTheme);
 
@@ -962,16 +1140,18 @@ function wireEvents() {
     qs("camera-btn")?.addEventListener("click", () => { showUploadTab(false); startCamera(); });
     qs("start-camera-btn")?.addEventListener("click", startCamera);
     qs("capture-btn")?.addEventListener("click", captureCamera);
-    const googleBtn = qs("login-google-btn");
+
+    bindPasswordToggle("toggle-login-password", "login-password");
+    bindPasswordToggle("toggle-signup-password", "signup-password");
+    bindPasswordToggle("toggle-confirm-password", "signup-confirm-password");
+
     const appleBtn = qs("login-apple-btn");
-    if (googleBtn) {
-        googleBtn.addEventListener("click", (e) => { e.preventDefault(); socialSignIn("Google"); });
-    }
     if (appleBtn) {
         appleBtn.classList.add("hidden");
         appleBtn.setAttribute("aria-hidden", "true");
     }
 
+    // Login form
     qs("login-form")?.addEventListener("submit", async (e) => {
         e.preventDefault();
         const email = qs("login-email")?.value?.trim();
@@ -980,44 +1160,28 @@ function wireEvents() {
             showToast("Please fill all required fields", "warning");
             return;
         }
-
-        AppState.user.id = null;
-        AppState.user.email = email;
-        AppState.user.name = email.split("@")[0];
-        AppState.user.provider = "local";
-        localStorage.removeItem("user-id");
-        localStorage.setItem("user-email", AppState.user.email);
-        localStorage.setItem("user-name", AppState.user.name);
-        localStorage.setItem("user-provider", "local");
-        localStorage.setItem("user-logged-in", "true");
-        setUserUI();
-        await loadHistory();
-        showScreen("dashboard-screen");
+        await handleLogin(email, password);
     });
 
+    // Signup form - UPDATED to use backend
     qs("signup-form")?.addEventListener("submit", async (e) => {
         e.preventDefault();
+        const name = qs("signup-name")?.value?.trim();
         const email = qs("signup-email")?.value?.trim();
         const password = qs("signup-password")?.value?.trim();
         const confirm = qs("signup-confirm-password")?.value?.trim();
-        if (!email || !password) return;
+
+        if (!name || !email || !password) {
+            showToast("Please fill all fields", "warning");
+            return;
+        }
+
         if (password !== confirm) {
             showToast("Passwords do not match", "warning");
             return;
         }
-        AppState.user.id = null;
-        AppState.user.email = email;
-        AppState.user.name = email.split("@")[0];
-        AppState.user.provider = "local";
-        localStorage.removeItem("user-id");
-        localStorage.setItem("user-email", AppState.user.email);
-        localStorage.setItem("user-name", AppState.user.name);
-        localStorage.setItem("user-provider", "local");
-        localStorage.setItem("user-logged-in", "false");
-        const loginEmail = qs("login-email");
-        if (loginEmail) loginEmail.value = email;
-        showToast("Account created. Please sign in.", "success");
-        showScreen("login-screen");
+
+        await handleSignup(email, password, name);
     });
 
     qs("forgot-form")?.addEventListener("submit", (e) => {
@@ -1031,6 +1195,7 @@ function wireEvents() {
     qs("back-to-login")?.addEventListener("click", () => showScreen("login-screen"));
     qs("forgot-password-btn")?.addEventListener("click", () => showScreen("forgot-screen"));
     qs("back-to-login-from-forgot")?.addEventListener("click", () => showScreen("login-screen"));
+
     const goToSignupBtn = qs("go-to-signup");
     if (goToSignupBtn) goToSignupBtn.onclick = () => showScreen("signup-screen");
 
@@ -1051,7 +1216,7 @@ function wireEvents() {
 
 function wirePWA() {
     if (!("serviceWorker" in navigator)) return;
-    navigator.serviceWorker.register("sw.js").catch(() => {});
+    navigator.serviceWorker.register("sw.js").catch(() => { });
 }
 
 function exportHistory() {
@@ -1079,7 +1244,7 @@ async function clearHistory() {
     AppState.diagnosisHistory = [];
     AppState.filteredHistory = [];
     saveAccountHistory([]);
-    try { localStorage.setItem(GLOBAL_HISTORY_KEY, JSON.stringify([])); } catch {}
+
     renderHistory();
     renderRecent();
     updateAnalytics();
@@ -1095,14 +1260,217 @@ async function clearHistory() {
 }
 
 function downloadUserData() {
-    const blob = new Blob([JSON.stringify({ user: AppState.user, diagnoses: AppState.diagnosisHistory, exported_at: new Date().toISOString() }, null, 2)], { type: "application/json" });
+    const rows = [...(AppState.diagnosisHistory || [])];
+    const exportedAt = new Date().toISOString();
+    const escapeHtml = (value) => String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    const ordered = rows.sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
+    const total = rows.length;
+    const avgConfidence = total ? Math.round(rows.reduce((sum, row) => sum + Number(row.confidence || 0), 0) / total * 100) : 0;
+    const severityCounts = ["severe", "moderate", "mild", "none"].map((key) => ({
+        key,
+        label: { severe: "Severe", moderate: "Moderate", mild: "Mild", none: "Healthy" }[key],
+        color: { severe: "#ef4444", moderate: "#f59e0b", mild: "#3b82f6", none: "#10b981" }[key],
+        value: rows.filter((row) => normalizeSeverity(row.severity) === key).length
+    }));
+    const statusCounts = ["resolved", "in_progress", "worsened"].map((key) => ({
+        key,
+        label: { resolved: "Resolved", in_progress: "In Progress", worsened: "Worsened" }[key],
+        color: { resolved: "#10b981", in_progress: "#f59e0b", worsened: "#ef4444" }[key],
+        value: rows.filter((row) => (row.status || "in_progress") === key).length
+    }));
+    const diseaseCounts = Object.entries(rows.reduce((acc, row) => {
+        const key = row.disease || "Unknown";
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+    }, {})).sort((a, b) => b[1] - a[1]).slice(0, 6);
+    const trendValues = ordered.slice(-10).map((row) => Math.round(Number(row.confidence || 0) * 100));
+    const chartWidth = 560;
+    const chartHeight = 220;
+    const barChartSvg = (items, title) => {
+        const max = Math.max(...items.map((item) => item.value), 1);
+        const barWidth = 90;
+        const gap = 28;
+        return `
+<svg width="${chartWidth}" height="${chartHeight}" viewBox="0 0 ${chartWidth} ${chartHeight}" xmlns="http://www.w3.org/2000/svg">
+  <text x="20" y="24" font-size="16" font-weight="700" fill="#0f172a">${escapeHtml(title)}</text>
+  ${items.map((item, index) => {
+      const height = Math.max(6, Math.round((item.value / max) * 120));
+      const x = 28 + index * (barWidth + gap);
+      const y = 170 - height;
+      return `<rect x="${x}" y="${y}" width="${barWidth}" height="${height}" rx="12" fill="${item.color}" />
+<text x="${x + barWidth / 2}" y="${y - 8}" text-anchor="middle" font-size="13" fill="#334155">${item.value}</text>
+<text x="${x + barWidth / 2}" y="190" text-anchor="middle" font-size="12" fill="#475569">${escapeHtml(item.label)}</text>`;
+  }).join("")}
+</svg>`;
+    };
+    const lineChartSvg = () => {
+        const points = trendValues.length ? trendValues : [0];
+        const max = Math.max(...points, 100);
+        const coords = points.map((value, index) => {
+            const x = 40 + (index * ((chartWidth - 80) / Math.max(points.length - 1, 1)));
+            const y = 170 - ((value / max) * 120);
+            return `${x},${y}`;
+        }).join(" ");
+        return `
+<svg width="${chartWidth}" height="${chartHeight}" viewBox="0 0 ${chartWidth} ${chartHeight}" xmlns="http://www.w3.org/2000/svg">
+  <text x="20" y="24" font-size="16" font-weight="700" fill="#0f172a">Confidence Trend</text>
+  <line x1="40" y1="170" x2="520" y2="170" stroke="#cbd5e1" stroke-width="2" />
+  <line x1="40" y1="40" x2="40" y2="170" stroke="#cbd5e1" stroke-width="2" />
+  <polyline fill="none" stroke="#10b981" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" points="${coords}" />
+  ${points.map((value, index) => {
+      const x = 40 + (index * ((chartWidth - 80) / Math.max(points.length - 1, 1)));
+      const y = 170 - ((value / max) * 120);
+      return `<circle cx="${x}" cy="${y}" r="4" fill="#10b981" />`;
+  }).join("")}
+</svg>`;
+    };
+    const reportHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>GreenGuardian Analysis Report</title>
+  <style>
+    body { font-family: Inter, Arial, sans-serif; margin: 0; padding: 32px; background: #f8fafc; color: #0f172a; }
+    .wrap { max-width: 1120px; margin: 0 auto; }
+    .hero { background: linear-gradient(135deg, #dcfce7, #ecfeff); border-radius: 24px; padding: 28px; margin-bottom: 24px; }
+    .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin: 24px 0; }
+    .card { background: #fff; border-radius: 20px; padding: 18px; box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08); }
+    .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 20px; overflow: hidden; }
+    th, td { padding: 12px 14px; border-bottom: 1px solid #e2e8f0; text-align: left; font-size: 14px; }
+    th { background: #f1f5f9; }
+    .pill { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero">
+      <h1 style="margin: 0 0 8px; font-size: 34px;">GreenGuardian Analysis Report</h1>
+      <p style="margin: 0; color: #334155;">Detailed diagnosis export for ${escapeHtml(AppState.user.name || "Plant User")} (${escapeHtml(AppState.user.email || "No email")})</p>
+      <p style="margin-top: 10px; color: #475569;">Generated: ${escapeHtml(new Date(exportedAt).toLocaleString())}</p>
+    </div>
+    <div class="grid">
+      <div class="card"><div style="color:#64748b;font-size:13px;">Total Diagnoses</div><div style="font-size:30px;font-weight:800;">${total}</div></div>
+      <div class="card"><div style="color:#64748b;font-size:13px;">Average Confidence</div><div style="font-size:30px;font-weight:800;">${avgConfidence}%</div></div>
+      <div class="card"><div style="color:#64748b;font-size:13px;">Active Issues</div><div style="font-size:30px;font-weight:800;">${severityCounts.filter((item) => item.key !== "none").reduce((sum, item) => sum + item.value, 0)}</div></div>
+      <div class="card"><div style="color:#64748b;font-size:13px;">Resolved Cases</div><div style="font-size:30px;font-weight:800;">${statusCounts.find((item) => item.key === "resolved")?.value || 0}</div></div>
+    </div>
+    <div class="charts">
+      <div class="card">${barChartSvg(severityCounts, "Severity Distribution")}</div>
+      <div class="card">${barChartSvg(statusCounts, "Treatment Status")}</div>
+      <div class="card">${barChartSvg(diseaseCounts.map(([label, value], index) => ({ label, value, color: ["#10b981", "#3b82f6", "#f59e0b", "#ef4444", "#8b5cf6", "#14b8a6"][index % 6] })), "Top Diseases")}</div>
+      <div class="card">${lineChartSvg()}</div>
+    </div>
+    <div class="card" style="margin-top: 24px;">
+      <h2 style="margin-top:0;">Detailed History</h2>
+      <table>
+        <thead><tr><th>ID</th><th>Disease</th><th>Confidence</th><th>Severity</th><th>Status</th><th>Date</th></tr></thead>
+        <tbody>
+          ${rows.length ? rows.map((row) => `<tr><td>${escapeHtml(row.id)}</td><td>${escapeHtml(row.disease)}</td><td>${Math.round(Number(row.confidence || 0) * 100)}%</td><td>${escapeHtml(normalizeSeverity(row.severity))}</td><td>${escapeHtml(row.status || "in_progress")}</td><td>${escapeHtml(formatDate(row.created_at))}</td></tr>`).join("") : `<tr><td colspan="6">No diagnosis history available.</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</body>
+</html>`;
+    const blob = new Blob([reportHtml], { type: "text/html;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `greenguardian-user-data-${Date.now()}.json`;
+    a.download = `greenguardian-analysis-report-${Date.now()}.html`;
     a.click();
     URL.revokeObjectURL(url);
-    showToast("User data exported", "success");
+    showToast("Detailed analysis report downloaded", "success");
+}
+
+
+function downloadCurrentDiagnosisReport() {
+    const result = AppState.diagnosisResult;
+    if (!result) {
+        showToast("No diagnosis available yet", "warning");
+        return;
+    }
+
+    const row = {
+        id: Number(result.diagnosis_id) || `latest-${Date.now()}` ,
+        disease: safeText(result.disease, "Unknown"),
+        confidence: Number(result.confidence || (Number(result.confidence_percentage || 0) / 100) || 0),
+        created_at: new Date().toISOString(),
+        severity: normalizeSeverity(result.treatment?.severity),
+        status: "in_progress"
+    };
+
+    const escapedDisease = String(row.disease).replace(/[&<>\"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" }[ch]));
+    const reportHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>GreenGuardian Plant Report</title>
+  <style>
+    body { font-family: Inter, Arial, sans-serif; margin: 0; padding: 32px; background: #f8fafc; color: #0f172a; }
+    .wrap { max-width: 960px; margin: 0 auto; }
+    .hero { background: linear-gradient(135deg, #dcfce7, #ecfeff); border-radius: 24px; padding: 28px; margin-bottom: 24px; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 24px 0; }
+    .card { background: #fff; border-radius: 20px; padding: 18px; box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08); }
+    .meter { height: 12px; border-radius: 999px; background: #e2e8f0; overflow: hidden; }
+    .meter > div { height: 100%; background: #10b981; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero">
+      <h1 style="margin: 0 0 8px; font-size: 34px;">GreenGuardian Plant Report</h1>
+      <p style="margin: 0; color: #334155;">Detailed diagnosis report for ${escapedDisease}</p>
+      <p style="margin-top: 10px; color: #475569;">Generated: ${new Date(row.created_at).toLocaleString()}</p>
+    </div>
+    <div class="grid">
+      <div class="card"><div style="color:#64748b;font-size:13px;">Disease</div><div style="font-size:26px;font-weight:800;">${escapedDisease}</div></div>
+      <div class="card"><div style="color:#64748b;font-size:13px;">Severity</div><div style="font-size:26px;font-weight:800; text-transform: capitalize;">${normalizeSeverity(result.treatment?.severity)}</div></div>
+      <div class="card" style="grid-column: 1 / -1;"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;"><span style="color:#64748b;font-size:13px;">Confidence</span><strong>${Math.round(row.confidence * 100)}%</strong></div><div class="meter"><div style="width:${Math.round(row.confidence * 100)}%"></div></div></div>
+    </div>
+    <div class="card" style="margin-bottom: 18px;"><h2 style="margin-top:0;">Symptoms</h2><p>${String(safeText(result.treatment?.symptoms)).replace(/[&<>\"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" }[ch]))}</p></div>
+    <div class="card" style="margin-bottom: 18px;"><h2 style="margin-top:0;">Organic Treatment</h2><p>${String(safeText(result.treatment?.organic_treatment)).replace(/[&<>\"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" }[ch]))}</p></div>
+    <div class="card" style="margin-bottom: 18px;"><h2 style="margin-top:0;">Chemical Treatment</h2><p>${String(safeText(result.treatment?.chemical_treatment)).replace(/[&<>\"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" }[ch]))}</p></div>
+    <div class="card"><h2 style="margin-top:0;">Prevention</h2><p>${String(safeText(result.treatment?.prevention)).replace(/[&<>\"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" }[ch]))}</p></div>
+  </div>
+</body>
+</html>`;
+
+    const blob = new Blob([reportHtml], { type: "text/html;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const slug = String(row.disease || "plant-report").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "plant-report";
+    a.href = url;
+    a.download = `${slug}-report-${Date.now()}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast("Plant report downloaded", "success");
+}
+function logout() {
+    localStorage.removeItem("user-id");
+    localStorage.removeItem("user-provider");
+    localStorage.setItem("user-logged-in", "false");
+    AppState.user = {
+        id: null,
+        email: localStorage.getItem("user-email") || "",
+        name: localStorage.getItem("user-name") || "Plant User",
+        plan: localStorage.getItem("user-plan") || "Free",
+        provider: "local"
+    };
+    AppState.diagnosisHistory = [];
+    AppState.filteredHistory = [];
+    AppState.diagnosisResult = null;
+    setUserUI();
+    renderRecent();
+    renderHistory();
+    updateAnalytics();
+    updateProfileStats();
+    showScreen("login-screen");
+    showToast("Logged out successfully", "success");
 }
 
 function deleteAccount() {
@@ -1124,24 +1492,83 @@ function setAccentColor(color) {
     applyAccentPalette(color);
     showToast(`Accent color set to ${color}`, "info");
 }
-function toggleTheme() { AppState.theme = AppState.theme === "light" ? "dark" : "light"; applyTheme(); }
-function toggleSetting(button, key) { button?.classList.toggle("active"); localStorage.setItem(`setting-${key}`, button?.classList.contains("active") ? "1" : "0"); }
-function toggleFaq(button) { const p = button?.parentElement?.querySelector("p"); const i = button?.querySelector("i"); if (p) p.classList.toggle("hidden"); i?.classList.toggle("rotate-180"); }
-function toggleBilling() { qs("billing-toggle")?.classList.toggle("active"); }
-function upgradePlan(plan) { AppState.user.plan = plan === "pro" ? "Pro" : "Enterprise"; localStorage.setItem("user-plan", AppState.user.plan); setUserUI(); showToast(`Plan changed to ${AppState.user.plan}`, "success"); }
-function contactSales() { showToast("Sales contact flow coming soon", "info"); }
-function openShareModal() { showToast("Share card modal coming soon", "info"); }
-function closeShareModal() {}
-function shareTo(platform) { showToast(`Share to ${platform} coming soon`, "info"); }
-function downloadShareCard() { showToast("Share card download coming soon", "info"); }
-function setEditorTool() { showToast("Editor tools ready", "info"); }
-function setCropRatio() { showToast("Crop ratio set", "info"); }
-function rotateImage() { showToast("Image rotated", "success"); }
-function flipImage() { showToast("Image flipped", "success"); }
-function updateImageAdjustments() {}
-function applyImageEdits() { showToast("Applied image edits", "success"); showScreen("dashboard-screen"); }
-function closeImageEditor() { showScreen("dashboard-screen"); }
-function showScreen(target) { UIRenderer.showScreen(target); }
+
+function toggleTheme() {
+    AppState.theme = AppState.theme === "light" ? "dark" : "light";
+    applyTheme();
+}
+
+function toggleSetting(button, key) {
+    button?.classList.toggle("active");
+    localStorage.setItem(`setting-${key}`, button?.classList.contains("active") ? "1" : "0");
+}
+
+function toggleFaq(button) {
+    const p = button?.parentElement?.querySelector("p");
+    const i = button?.querySelector("i");
+    if (p) p.classList.toggle("hidden");
+    i?.classList.toggle("rotate-180");
+}
+
+function toggleBilling() {
+    qs("billing-toggle")?.classList.toggle("active");
+}
+
+function upgradePlan(plan) {
+    AppState.user.plan = plan === "pro" ? "Pro" : "Enterprise";
+    localStorage.setItem("user-plan", AppState.user.plan);
+    setUserUI();
+    showToast(`Plan changed to ${AppState.user.plan}`, "success");
+}
+
+function contactSales() {
+    showToast("Sales contact flow coming soon", "info");
+}
+
+function openShareModal() {
+    showToast("Share card modal coming soon", "info");
+}
+
+function closeShareModal() { }
+
+function shareTo(platform) {
+    showToast(`Share to ${platform} coming soon`, "info");
+}
+
+function downloadShareCard() {
+    showToast("Share card download coming soon", "info");
+}
+
+function setEditorTool() {
+    showToast("Editor tools ready", "info");
+}
+
+function setCropRatio() {
+    showToast("Crop ratio set", "info");
+}
+
+function rotateImage() {
+    showToast("Image rotated", "success");
+}
+
+function flipImage() {
+    showToast("Image flipped", "success");
+}
+
+function updateImageAdjustments() { }
+
+function applyImageEdits() {
+    showToast("Applied image edits", "success");
+    showScreen("dashboard-screen");
+}
+
+function closeImageEditor() {
+    showScreen("dashboard-screen");
+}
+
+function showScreen(target) {
+    UIRenderer.showScreen(target);
+}
 
 function init() {
     applyTheme();
@@ -1152,9 +1579,23 @@ function init() {
     wireEvents();
     renderTips();
     renderEncyclopedia();
+
+    // Check if user is already logged in
     const loggedIn = localStorage.getItem("user-logged-in") === "true";
-    showScreen("signup-screen");
-    if (loggedIn) loadHistory().then(() => updateAnalytics());
+    const userId = localStorage.getItem("user-id");
+
+    if (loggedIn && userId) {
+        AppState.user.id = Number(userId);
+        AppState.user.email = localStorage.getItem("user-email") || "";
+        AppState.user.name = localStorage.getItem("user-name") || "Plant User";
+        loadHistory().then(() => {
+            updateAnalytics();
+            showScreen("dashboard-screen");
+        });
+    } else {
+        showScreen("signup-screen");
+    }
+
     if (window.lucide?.createIcons) window.lucide.createIcons();
 }
 
@@ -1172,7 +1613,10 @@ window.saveHistoryStatus = saveHistoryStatus;
 window.exportHistory = exportHistory;
 window.clearHistory = clearHistory;
 window.downloadUserData = downloadUserData;
+window.downloadCurrentDiagnosisReport = downloadCurrentDiagnosisReport;
 window.deleteAccount = deleteAccount;
+window.logout = logout;
+window.toggleUserMenu = toggleUserMenu;
 window.filterEncyclopedia = filterEncyclopedia;
 window.searchEncyclopedia = searchEncyclopedia;
 window.viewDiseaseDetail = viewDiseaseDetail;
@@ -1197,9 +1641,6 @@ window.updateImageAdjustments = updateImageAdjustments;
 window.applyImageEdits = applyImageEdits;
 window.closeImageEditor = closeImageEditor;
 window.socialSignIn = socialSignIn;
-
-
-
 
 // Enhanced Plant / History / Analytics layer (keeps existing UI structure)
 (function () {
@@ -1255,6 +1696,7 @@ window.socialSignIn = socialSignIn;
 
         anchor.parentElement.insertBefore(card, anchor);
     }
+
     window.loadDemoImage = async function (idx) {
         const src = DEMO_DATA_IMAGES[idx];
         if (!src) return;
@@ -1272,6 +1714,8 @@ window.socialSignIn = socialSignIn;
         }
     };
 
+    // Override render functions
+    const originalRenderRecent = renderRecent;
     renderRecent = function () {
         const c = qs('recent-diagnoses');
         if (!c) return;
@@ -1303,6 +1747,7 @@ window.socialSignIn = socialSignIn;
         }).join('');
     };
 
+    const originalRenderHistory = renderHistory;
     renderHistory = function () {
         const date = qs('history-filter-date')?.value || 'all';
         const sev = qs('history-filter-severity')?.value || 'all';
@@ -1352,6 +1797,8 @@ window.socialSignIn = socialSignIn;
 
         updateHistoryStats(list);
     };
+
+    const originalUpdateAnalytics = updateAnalytics;
     updateAnalytics = function () {
         const range = qs('analytics-time-range')?.value || '30days';
         const data = byDate(AppState.diagnosisHistory, range);
@@ -1438,6 +1885,7 @@ window.socialSignIn = socialSignIn;
         updateAnalytics();
         updateProfileStats();
     };
+
     function bootEnhancements() {
         injectPlantLibraryDemo();
         if (AppState.currentScreen === 'dashboard-screen') renderRecent();
@@ -1451,6 +1899,12 @@ window.socialSignIn = socialSignIn;
         bootEnhancements();
     }
 })();
+
+
+
+
+
+
 
 
 

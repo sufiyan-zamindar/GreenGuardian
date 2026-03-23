@@ -1,5 +1,5 @@
 // GreenGuardian Service Worker
-const CACHE_NAME = 'greenguardian-v3';
+const CACHE_NAME = 'greenguardian-v4';
 const STATIC_ASSETS = [
     '/',
     '/index.html',
@@ -99,3 +99,4 @@ self.addEventListener('notificationclick', (event) => {
         event.waitUntil(clients.openWindow('/'));
     }
 });
+

@@ -12,11 +12,19 @@ BACKEND_ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(PROJECT_ROOT / ".env")
 load_dotenv(BACKEND_ROOT / ".env", override=True)
 
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_PORT = os.getenv("DB_PORT", "5432")
-DB_NAME = os.getenv("DB_NAME", "greenguardian")
-DB_USER = os.getenv("DB_USER", "postgres")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "postgres")
+RAW_DB_HOST = os.getenv("DB_HOST", "localhost")
+RAW_DB_PORT = os.getenv("DB_PORT", "5432")
+RAW_DB_NAME = os.getenv("DB_NAME", "greenguardian")
+RAW_DB_USER = os.getenv("DB_USER", "postgres")
+RAW_DB_PASSWORD = os.getenv("DB_PASSWORD", "postgres")
+
+ACTIVE_DB_CONFIG = {
+    "host": RAW_DB_HOST,
+    "port": RAW_DB_PORT,
+    "database": RAW_DB_NAME,
+    "user": RAW_DB_USER,
+    "password": RAW_DB_PASSWORD,
+}
 
 SCHEMA_FILE = PROJECT_ROOT / "database" / "schema" / "01_initial_schema.sql"
 SEED_FILE = PROJECT_ROOT / "database" / "seeds" / "01_disease_data.sql"
@@ -36,19 +44,28 @@ def _execute_sql_file(cursor, file_path: Path):
 def _ensure_schema_and_seed(conn):
     cursor = conn.cursor()
     try:
-        # Compatibility migrations for legacy schemas should run first,
-        # so later schema/index SQL won't fail on missing created_at columns.
         compatibility_sql = [
             "ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
             "ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+            "ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS full_name VARCHAR(150)",
             "ALTER TABLE IF EXISTS diseases ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
             "ALTER TABLE IF EXISTS disease_profiles ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
             "ALTER TABLE IF EXISTS diagnoses ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+            "ALTER TABLE IF EXISTS diagnoses ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'in_progress'",
             "ALTER TABLE IF EXISTS treatments ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
             "ALTER TABLE IF EXISTS treatments ADD COLUMN IF NOT EXISTS applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
         ]
         for stmt in compatibility_sql:
             cursor.execute(stmt)
+        conn.commit()
+
+        cursor.execute(
+            """
+            UPDATE diagnoses
+            SET created_at = COALESCE(created_at, prediction_time, CURRENT_TIMESTAMP)
+            WHERE created_at IS NULL
+            """
+        )
         conn.commit()
 
         required_tables = ["users", "diseases", "disease_profiles", "diagnoses", "treatments"]
@@ -68,7 +85,6 @@ def _ensure_schema_and_seed(conn):
             _execute_sql_file(cursor, SCHEMA_FILE)
             conn.commit()
 
-        # Re-run compatibility after schema creation to cover newly-created/partially-created tables.
         for stmt in compatibility_sql:
             cursor.execute(stmt)
         conn.commit()
@@ -92,17 +108,60 @@ def _ensure_schema_and_seed(conn):
         cursor.close()
 
 
+def _candidate_db_configs():
+    names = []
+    for candidate in [RAW_DB_NAME, str(RAW_DB_NAME).lower(), "greenguardian"]:
+        candidate = (candidate or "").strip()
+        if candidate and candidate not in names:
+            names.append(candidate)
+
+    passwords = []
+    for candidate in [RAW_DB_PASSWORD, "postgres" if RAW_DB_USER == "postgres" else None]:
+        candidate = (candidate or "").strip()
+        if candidate and candidate not in passwords:
+            passwords.append(candidate)
+
+    configs = []
+    for database in names:
+        for password in passwords:
+            config = {
+                "host": RAW_DB_HOST,
+                "port": RAW_DB_PORT,
+                "database": database,
+                "user": RAW_DB_USER,
+                "password": password,
+            }
+            if config not in configs:
+                configs.append(config)
+    return configs
+
+
+def _initialize_pool():
+    global ACTIVE_DB_CONFIG
+
+    attempts = []
+    for config in _candidate_db_configs():
+        try:
+            pool = SimpleConnectionPool(1, 5, **config)
+            ACTIVE_DB_CONFIG = config
+            if config["database"] != RAW_DB_NAME or config["password"] != RAW_DB_PASSWORD:
+                print(
+                    "Database pool initialized with fallback config: "
+                    f"{config['host']}:{config['port']}/{config['database']} user={config['user']}"
+                )
+            else:
+                print(f"Database pool initialized: {config['host']}:{config['port']}/{config['database']}")
+            return pool, None
+        except Exception as exc:
+            attempts.append(f"{config['database']}:{config['password']} -> {exc}")
+
+    return None, " | ".join(attempts) or "Database connection failed"
+
+
 try:
-    connection_pool = SimpleConnectionPool(
-        1,
-        5,
-        host=DB_HOST,
-        port=DB_PORT,
-        database=DB_NAME,
-        user=DB_USER,
-        password=DB_PASSWORD,
-    )
-    print(f"Database pool initialized: {DB_HOST}:{DB_PORT}/{DB_NAME}")
+    connection_pool, DB_INIT_ERROR = _initialize_pool()
+    if connection_pool is None:
+        raise RuntimeError(DB_INIT_ERROR)
 
     init_conn = connection_pool.getconn()
     try:
@@ -123,7 +182,7 @@ def get_db_connection():
 
 
 def return_db_connection(conn):
-    if connection_pool:
+    if connection_pool and conn:
         connection_pool.putconn(conn)
 
 
@@ -149,14 +208,18 @@ def close_db_pool():
 
 
 def get_db_status():
+    details = {
+        "host": ACTIVE_DB_CONFIG["host"],
+        "port": ACTIVE_DB_CONFIG["port"],
+        "database": ACTIVE_DB_CONFIG["database"],
+        "user": ACTIVE_DB_CONFIG["user"],
+    }
+
     if connection_pool is None:
         return {
             "connected": False,
             "error": DB_INIT_ERROR or "Database connection pool not initialized",
-            "host": DB_HOST,
-            "port": DB_PORT,
-            "database": DB_NAME,
-            "user": DB_USER,
+            **details,
         }
 
     conn = None
@@ -169,20 +232,16 @@ def get_db_status():
         return {
             "connected": True,
             "error": None,
-            "host": DB_HOST,
-            "port": DB_PORT,
-            "database": DB_NAME,
-            "user": DB_USER,
+            **details,
         }
     except Exception as e:
         return {
             "connected": False,
             "error": str(e),
-            "host": DB_HOST,
-            "port": DB_PORT,
-            "database": DB_NAME,
-            "user": DB_USER,
+            **details,
         }
     finally:
         if conn:
             return_db_connection(conn)
+
+

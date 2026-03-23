@@ -5,6 +5,7 @@ import os
 import re
 import urllib.parse
 import urllib.request
+from hashlib import sha256
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException
@@ -18,6 +19,77 @@ router = APIRouter()
 class GoogleAuthRequest(BaseModel):
     credential: Optional[str] = None
     access_token: Optional[str] = None
+
+
+class SignupRequest(BaseModel):
+    username: Optional[str] = None
+    email: str
+    password: str
+    full_name: Optional[str] = None
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class UserResponse(BaseModel):
+    id: int
+    username: str
+    email: str
+    full_name: str
+
+
+MIN_PASSWORD_LENGTH = 6
+GOOGLE_PASSWORD_PLACEHOLDER = "GOOGLE_OAUTH"
+
+
+def _normalize_email(email: str) -> str:
+    return (email or "").strip().lower()
+
+
+def _slug_username(email: str) -> str:
+    base = email.split("@", 1)[0].strip().lower() or "user"
+    base = re.sub(r"[^a-z0-9_\.\-]", "_", base)
+    return base[:90] or "user"
+
+
+def _hash_password(password: str) -> str:
+    return "sha256$" + sha256(password.encode("utf-8")).hexdigest()
+
+
+def _verify_password(password: str, stored_password: str) -> bool:
+    if not stored_password:
+        return False
+    if stored_password == GOOGLE_PASSWORD_PLACEHOLDER:
+        return False
+    if stored_password.startswith("sha256$"):
+        return stored_password == _hash_password(password)
+    # Allow legacy plaintext rows to continue working in development.
+    return stored_password == password
+
+
+def _serialize_user(row) -> dict:
+    return {
+        "id": int(row[0]),
+        "username": row[1],
+        "email": row[2],
+        "full_name": row[3] or row[1],
+    }
+
+
+def _ensure_unique_username(cur, requested_username: str | None, email: str) -> str:
+    base_username = (requested_username or "").strip().lower() or _slug_username(email)
+    base_username = re.sub(r"[^a-z0-9_\.\-]", "_", base_username)[:90] or "user"
+
+    username = base_username
+    suffix = 1
+    while True:
+        cur.execute("SELECT 1 FROM users WHERE username = %s", (username,))
+        if not cur.fetchone():
+            return username
+        suffix += 1
+        username = f"{base_username}_{suffix}"
 
 
 def _verify_google_id_token(id_token: str) -> dict:
@@ -82,12 +154,6 @@ def _fetch_google_userinfo(access_token: str) -> dict:
     return payload
 
 
-def _slug_username(email: str) -> str:
-    base = email.split("@", 1)[0].strip().lower() or "user"
-    base = re.sub(r"[^a-z0-9_\.\-]", "_", base)
-    return base[:90] or "user"
-
-
 def _upsert_google_user(email: str, full_name: str) -> dict:
     conn = None
     try:
@@ -107,41 +173,137 @@ def _upsert_google_user(email: str, full_name: str) -> dict:
                 (full_name, user_id),
             )
             conn.commit()
-            return {"id": user_id, "username": row[1], "email": row[2], "full_name": full_name or row[3]}
+            return _serialize_user((user_id, row[1], row[2], full_name or row[3]))
 
-        base_username = _slug_username(email)
-        username = base_username
-        suffix = 1
-        while True:
-            cur.execute("SELECT 1 FROM users WHERE username = %s", (username,))
-            if not cur.fetchone():
-                break
-            suffix += 1
-            username = f"{base_username}_{suffix}"
-
+        username = _ensure_unique_username(cur, None, email)
         cur.execute(
             """
             INSERT INTO users (username, email, password_hash, full_name)
             VALUES (%s, %s, %s, %s)
             RETURNING id, username, email, COALESCE(full_name, '')
             """,
-            (username, email, "GOOGLE_OAUTH", full_name),
+            (username, email, GOOGLE_PASSWORD_PLACEHOLDER, full_name),
         )
         created = cur.fetchone()
         conn.commit()
 
-        return {
-            "id": int(created[0]),
-            "username": created[1],
-            "email": created[2],
-            "full_name": created[3],
-        }
+        return _serialize_user(created)
     except HTTPException:
         raise
     except Exception as exc:
         if conn:
             conn.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to create/login user: {exc}")
+    finally:
+        if conn:
+            return_db_connection(conn)
+
+
+@router.post("/auth/signup")
+async def signup(payload: SignupRequest):
+    email = _normalize_email(payload.email)
+    password = payload.password or ""
+    full_name = (payload.full_name or "").strip()
+
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required")
+    if len(password) < MIN_PASSWORD_LENGTH:
+        raise HTTPException(status_code=400, detail=f"Password must be at least {MIN_PASSWORD_LENGTH} characters")
+
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        cur.execute("SELECT 1 FROM users WHERE email = %s", (email,))
+        if cur.fetchone():
+            raise HTTPException(status_code=409, detail="An account with this email already exists")
+
+        username = _ensure_unique_username(cur, payload.username, email)
+        cur.execute(
+            """
+            INSERT INTO users (username, email, password_hash, full_name)
+            VALUES (%s, %s, %s, %s)
+            RETURNING id, username, email, COALESCE(full_name, '')
+            """,
+            (username, email, _hash_password(password), full_name),
+        )
+        created = cur.fetchone()
+        conn.commit()
+        return _serialize_user(created)
+    except HTTPException:
+        if conn:
+            conn.rollback()
+        raise
+    except Exception as exc:
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=500, detail=f"Signup failed: {exc}")
+    finally:
+        if conn:
+            return_db_connection(conn)
+
+
+@router.post("/auth/login")
+async def login(payload: LoginRequest):
+    email = _normalize_email(payload.email)
+    password = payload.password or ""
+
+    if not email or not password:
+        raise HTTPException(status_code=400, detail="Email and password are required")
+
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT id, username, email, COALESCE(full_name, ''), password_hash FROM users WHERE email = %s",
+            (email,),
+        )
+        row = cur.fetchone()
+        if not row or not _verify_password(password, row[4]):
+            raise HTTPException(status_code=401, detail="Invalid email or password")
+
+        if not str(row[4]).startswith("sha256$") and row[4] != GOOGLE_PASSWORD_PLACEHOLDER:
+            cur.execute(
+                "UPDATE users SET password_hash = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s",
+                (_hash_password(password), int(row[0])),
+            )
+            conn.commit()
+
+        user = _serialize_user(row[:4])
+        return {"success": True, "user": user}
+    except HTTPException:
+        if conn:
+            conn.rollback()
+        raise
+    except Exception as exc:
+        if conn:
+            conn.rollback()
+        raise HTTPException(status_code=500, detail=f"Login failed: {exc}")
+    finally:
+        if conn:
+            return_db_connection(conn)
+
+
+@router.get("/auth/me/{user_id}")
+async def get_user(user_id: int):
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT id, username, email, COALESCE(full_name, '') FROM users WHERE id = %s",
+            (user_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="User not found")
+        return _serialize_user(row)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to load user: {exc}")
     finally:
         if conn:
             return_db_connection(conn)

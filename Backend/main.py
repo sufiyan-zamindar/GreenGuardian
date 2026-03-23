@@ -64,14 +64,8 @@ async def startup_event():
     print("\n" + "=" * 60)
     print("GreenGuardian API Starting...")
     print("=" * 60)
-    try:
-        from app.services.prediction_service import class_names
-        print("[OK] AI Model loaded successfully")
-        print(f"  - Classes available: {len(class_names)}")
-    except Exception as e:
-        print(f"[WARN] AI Model not available: {e}")
-
     print("[OK] API is ready to accept requests")
+    print("[INFO] AI model will load on the first diagnosis request")
     print("API Documentation: http://localhost:8000/docs")
     print("=" * 60 + "\n")
 
